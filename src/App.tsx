@@ -8,7 +8,6 @@ import type {
   PantryTask,
   Visitor,
   User,
-  PersonalTask,
 } from './types/index.ts';
 import { useRealtimeEvents } from './hooks/useRealtimeEvents.ts';
 import { Navbar } from './components/Navbar.tsx';
@@ -24,7 +23,6 @@ import { WalkInModal } from './components/WalkInModal.tsx';
 import { SecureDocumentViewerModal } from './components/SecureDocumentViewerModal.tsx';
 import { ForgotPasswordModal } from './components/ForgotPasswordModal.tsx';
 import { ResetPasswordView } from './components/ResetPasswordView.tsx';
-import { StaffSwitchModal } from './components/StaffSwitchModal.tsx';
 
 // Role Dashboards
 import { HRDashboard } from './components/dashboards/HRDashboard.tsx';
@@ -44,28 +42,13 @@ import {
   Key,
   X,
   CheckCircle2,
-  Users,
 } from 'lucide-react';
 
 export default function App() {
-  const [routePath, setRoutePath] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      return window.location.pathname + window.location.search;
-    }
-    return '/';
-  });
+  const [routePath, setRoutePath] = useState<string>(() => window.location.pathname);
   const [currentRole, setCurrentRole] = useState<UserRole>('HR');
-  const [currentUserId, setCurrentUserId] = useState<string>('usr-hr-nisha');
-  const [currentUser, setCurrentUser] = useState<User | null>({
-    id: 'usr-hr-nisha',
-    userId: 'usr-hr-nisha',
-    name: 'Nisha',
-    email: 'nisha@whitecollarrealty.com',
-    role: 'HR',
-    designation: 'Senior HR Manager',
-    department: 'HR & Recruitment',
-    isActive: true,
-  });
+  const [currentUserId, setCurrentUserId] = useState<string>('usr-hr-1');
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   // Application Data States
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -73,7 +56,6 @@ export default function App() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [pantryTasks, setPantryTasks] = useState<PantryTask[]>([]);
-  const [personalTasks, setPersonalTasks] = useState<PersonalTask[]>([]);
   const [visitors, setVisitors] = useState<Visitor[]>([]);
 
   // Modals & Drawers
@@ -87,7 +69,6 @@ export default function App() {
     | 'ASSIGN_ROOM'
     | 'END_INTERVIEW'
     | 'STAFF_LOGIN'
-    | 'STAFF_SWITCH'
     | 'FORGOT_PASSWORD'
     | null
   >(null);
@@ -104,31 +85,65 @@ export default function App() {
   // Listen to popstate for browser back/forward routing
   useEffect(() => {
     const handlePopState = () => {
-      setRoutePath(window.location.pathname + window.location.search);
+      setRoutePath(window.location.pathname);
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
+  // Check routes
+  const isResetPasswordRoute =
+    routePath === '/reset-password' ||
+    routePath.startsWith('/reset-password');
+  const resetPasswordToken =
+    new URLSearchParams(window.location.search).get('token') || '';
+
+  const isGeneralRegisterRoute =
+    routePath === '/register' ||
+    routePath.startsWith('/register/') ||
+    routePath.startsWith('/candidate/register');
+
+  const isCompleteRoute =
+    routePath === '/registration-complete' ||
+    routePath === '/thank-you' ||
+    routePath === '/about';
+
+  const registerTokenMatch = routePath.match(/\/register\/([^/?#]+)/) || routePath.match(/\/candidate\/register\/([^/?#]+)/);
+  const dedicatedRegisterToken = registerTokenMatch ? registerTokenMatch[1] : undefined;
+
+  const isCandidateRoute = routePath.startsWith('/candidate/check-in');
+  const urlTokenMatch = routePath.match(/\/candidate\/check-in\/([^/?#]+)/);
+  const queryToken = new URLSearchParams(window.location.search).get('token');
+  const dedicatedToken = urlTokenMatch ? urlTokenMatch[1] : (queryToken || 'WCR-APPT-901');
+
+  // Dedicated in-app document viewer route
+  // e.g. /app/candidates/:candidateId/resume/view OR /app/candidates/:candidateId/government-id/view
+  const docViewerMatch = routePath.match(/\/(?:app\/)?candidates\/([^/?#]+)\/(resume|government-id|govid)\/view/);
+  const docCandidateId = docViewerMatch ? docViewerMatch[1] : null;
+  const docViewerType: 'RESUME' | 'GOVERNMENT_ID' | null = docViewerMatch
+    ? (docViewerMatch[2] === 'resume' ? 'RESUME' : 'GOVERNMENT_ID')
+    : null;
+
+  const [routeCandidate, setRouteCandidate] = useState<Candidate | null>(null);
+  const [routeCandidateLoading, setRouteCandidateLoading] = useState<boolean>(false);
+
   // Fetch all live data from server
   const fetchAllData = useCallback(async () => {
     try {
-      const [cRes, iRes, rRes, nRes, pRes, ptRes] = await Promise.all([
-        fetch(`/api/candidates?role=${currentRole}&userId=${currentUserId}`),
+      const [cRes, iRes, rRes, nRes, pRes] = await Promise.all([
+        fetch(`/api/candidates?role=${currentRole}`),
         fetch('/api/interviews'),
         fetch('/api/rooms'),
         fetch(`/api/notifications?role=${currentRole}&userId=${currentUserId}`),
         fetch('/api/pantry/tasks'),
-        fetch(`/api/tasks/personal?userId=${currentUserId}&role=${currentRole}`),
       ]);
 
-      const [cData, iData, rData, nData, pData, ptData] = await Promise.all([
+      const [cData, iData, rData, nData, pData] = await Promise.all([
         cRes.json(),
         iRes.json(),
         rRes.json(),
         nRes.json(),
         pRes.json(),
-        ptRes.json(),
       ]);
 
       if (cData.success) setCandidates(cData.candidates);
@@ -136,7 +151,6 @@ export default function App() {
       if (rData.success) setRooms(rData.rooms);
       if (nData.success) setNotifications(nData.notifications);
       if (pData.success) setPantryTasks(pData.tasks);
-      if (ptData.success) setPersonalTasks(ptData.tasks);
     } catch (err) {
       console.error('Failed fetching data snapshot', err);
     }
@@ -148,175 +162,81 @@ export default function App() {
     userId: currentUserId,
     onEvent: (event) => {
       console.log('[REALTIME EVENT RECEIVED]', event);
+      // Seamless zero-refresh state update on any confirmed backend event!
       fetchAllData();
     },
   });
 
   // Re-fetch when switching roles or mounting
   useEffect(() => {
-    if (!routePath.startsWith('/candidate/check-in') && !routePath.startsWith('/register')) {
+    if (!isCandidateRoute && !isGeneralRegisterRoute) {
       fetchAllData();
     }
-  }, [fetchAllData, routePath]);
+  }, [fetchAllData, isCandidateRoute, isGeneralRegisterRoute]);
+
+  // Load candidate record if on a direct document viewer route
+  useEffect(() => {
+    if (docCandidateId) {
+      const existing = candidates.find((c) => c.id === docCandidateId);
+      if (existing) {
+        setRouteCandidate(existing);
+      } else {
+        setRouteCandidateLoading(true);
+        fetch(`/api/candidates/${encodeURIComponent(docCandidateId)}?role=${encodeURIComponent(currentRole)}`)
+          .then((r) => {
+            if (!r.ok) return { success: false };
+            return r.json();
+          })
+          .then((data) => {
+            if (data.success && data.candidate) {
+              setRouteCandidate(data.candidate);
+            }
+          })
+          .catch((err) => console.warn('[Doc Route Sync]', err))
+          .finally(() => setRouteCandidateLoading(false));
+      }
+    } else {
+      setRouteCandidate(null);
+    }
+  }, [docCandidateId, candidates, currentRole]);
 
   // Handle Role Switching
   const handleSelectRole = (role: UserRole) => {
     setCurrentRole(role);
-    if (role === 'CEO') {
-      setCurrentUserId('usr-ceo-lalit');
-      setCurrentUser({
-        id: 'usr-ceo-lalit',
-        name: 'Lalit Sir',
-        email: 'lalit@whitecollarrealty.com',
-        role: 'CEO',
-        designation: 'CEO',
-        department: 'Executive Leadership',
-        isActive: true,
-      });
-    } else if (role === 'ADMIN') {
-      setCurrentUserId('usr-admin-sameer');
-      setCurrentUser({
-        id: 'usr-admin-sameer',
-        name: 'Sameer Sir',
-        email: 'sameer@whitecollarrealty.com',
-        role: 'ADMIN',
-        designation: 'Admin',
-        department: 'Administration & Operations',
-        isActive: true,
-      });
-    } else if (role === 'CO_FOUNDER' || role === 'INTERVIEWER') {
-      setCurrentUserId('usr-cofounder-kimmi');
-      setCurrentUser({
-        id: 'usr-cofounder-kimmi',
-        name: 'Kimmi Mam',
-        email: 'kimmi@whitecollarrealty.com',
-        role: 'CO_FOUNDER',
-        designation: 'CO-Founder',
-        department: 'Executive Leadership',
-        isActive: true,
-      });
-    } else if (role === 'RECEPTION') {
-      setCurrentUserId('usr-rec-ananya');
-      setCurrentUser({
-        id: 'usr-rec-ananya',
-        name: 'Ananya Sen',
-        email: 'reception@whitecollarrealty.com',
-        role: 'RECEPTION',
-        designation: 'Front Desk Coordinator',
-        department: 'Front Desk & Reception',
-        isActive: true,
-      });
-    } else if (role === 'PANTRY') {
-      setCurrentUserId('usr-pan-ramesh');
-      setCurrentUser({
-        id: 'usr-pan-ramesh',
-        name: 'Ramesh Kumar',
-        email: 'pantry@whitecollarrealty.com',
-        role: 'PANTRY',
-        designation: 'Hospitality & Pantry Executive',
-        department: 'Pantry & Hospitality',
-        isActive: true,
-      });
-    } else {
-      setCurrentUserId('usr-hr-nisha');
-      setCurrentUser({
-        id: 'usr-hr-nisha',
-        name: 'Nisha',
-        email: 'nisha@whitecollarrealty.com',
-        role: 'HR',
-        designation: 'Senior HR Manager',
-        department: 'HR & Recruitment',
-        isActive: true,
-      });
-    }
+    if (role === 'INTERVIEWER') setCurrentUserId('usr-int-1');
+    else if (role === 'ADMIN') setCurrentUserId('usr-admin-1');
+    else if (role === 'CEO') setCurrentUserId('usr-ceo-1');
+    else if (role === 'RECEPTION') setCurrentUserId('usr-rec-1');
+    else if (role === 'PANTRY') setCurrentUserId('usr-pan-1');
+    else setCurrentUserId('usr-hr-1');
   };
 
-  // Staff Account Selection (Isolated Session Switch)
-  const handleSelectStaffUser = async (user: { email: string; password?: string; role: UserRole; name: string; id: string }) => {
+  // Staff Login Handler
+  const handleStaffLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError(null);
+    setLoginSuccess(null);
+
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ emailOrUsername: user.email, password: user.password || 'wcr123' }),
+        body: JSON.stringify({ email: loginEmail, password: loginPassword }),
       });
       const data = await res.json();
-      if (data.success && data.user) {
-        // Clean isolated session
-        localStorage.removeItem(`wcr_cache_${currentUserId}`);
-        setCurrentUser(data.user);
-        setCurrentUserId(data.user.id);
-        setCurrentRole(data.user.role);
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Authentication failed');
+      }
+
+      setCurrentUser(data.user);
+      handleSelectRole(data.user.role);
+      setLoginSuccess(`Signed in as ${data.user.name} (${data.user.role})`);
+      setTimeout(() => {
         setActiveModal(null);
-      }
-    } catch (err) {
-      console.error('Failed staff authentication', err);
-    }
-  };
-
-  // Staff Logout
-  const handleLogout = async () => {
-    try {
-      if (currentUser) {
-        await fetch('/api/auth/logout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: currentUser.id,
-            userName: currentUser.name,
-            userRole: currentUser.role,
-          }),
-        });
-      }
-    } catch (err) {
-      console.warn('Logout request error', err);
-    }
-    localStorage.removeItem(`wcr_cache_${currentUserId}`);
-    setPersonalTasks([]);
-    setNotifications([]);
-    setActiveModal('STAFF_SWITCH');
-  };
-
-  // Personal Task Handlers
-  const handleTogglePersonalTask = async (taskId: string) => {
-    try {
-      const res = await fetch(`/api/tasks/personal/${taskId}/toggle?userId=${currentUserId}`, {
-        method: 'POST',
-      });
-      const data = await res.json();
-      if (data.success && data.task) {
-        setPersonalTasks((prev) =>
-          prev.map((t) => (t.id === taskId ? data.task : t))
-        );
-      }
-    } catch (err) {
-      console.error('Failed toggling task', err);
-    }
-  };
-
-  const handleAddPersonalTask = async (taskData: { title: string; category: any; priority: any; description?: string }) => {
-    try {
-      const res = await fetch(`/api/tasks/personal?userId=${currentUserId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(taskData),
-      });
-      const data = await res.json();
-      if (data.success && data.task) {
-        setPersonalTasks((prev) => [data.task, ...prev]);
-      }
-    } catch (err) {
-      console.error('Failed adding personal task', err);
-    }
-  };
-
-  const handleDeletePersonalTask = async (taskId: string) => {
-    try {
-      await fetch(`/api/tasks/personal/${taskId}?userId=${currentUserId}`, {
-        method: 'DELETE',
-      });
-      setPersonalTasks((prev) => prev.filter((t) => t.id !== taskId));
-    } catch (err) {
-      console.error('Failed deleting personal task', err);
+        setLoginSuccess(null);
+      }, 1000);
+    } catch (err: any) {
+      setLoginError(err.message || 'Login failed');
     }
   };
 
@@ -400,117 +320,7 @@ export default function App() {
     }
   };
 
-  // Staff Login Submission Handler
-  const handleStaffLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoginError(null);
-    setLoginSuccess(null);
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ emailOrUsername: loginEmail, password: loginPassword }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        setLoginError(data.error || 'Authentication failed. Please check credentials.');
-        return;
-      }
-      setLoginSuccess(`Welcome back, ${data.user.name}!`);
-      setCurrentUser(data.user);
-      setCurrentUserId(data.user.id);
-      setCurrentRole(data.user.role);
-      setTimeout(() => {
-        setActiveModal(null);
-        setLoginSuccess(null);
-      }, 800);
-    } catch (err: any) {
-      setLoginError(err.message || 'Login request error.');
-    }
-  };
-
   const unreadCount = notifications.filter((n) => !n.read).length;
-
-  // Dedicated Route Parsing (Path + Query String support)
-  const pathWithoutQuery = routePath.split('?')[0].split('#')[0];
-  const queryString = routePath.includes('?') ? routePath.slice(routePath.indexOf('?')) : (typeof window !== 'undefined' ? window.location.search : '');
-  const searchParams = new URLSearchParams(queryString);
-
-  const isGeneralRegisterRoute =
-    pathWithoutQuery === '/register' ||
-    pathWithoutQuery.startsWith('/register/') ||
-    pathWithoutQuery === '/candidate/register' ||
-    pathWithoutQuery.startsWith('/candidate/register/') ||
-    pathWithoutQuery === '/candidate-register' ||
-    pathWithoutQuery.startsWith('/candidate-register/') ||
-    pathWithoutQuery === '/apply' ||
-    pathWithoutQuery.startsWith('/apply/');
-
-  let dedicatedRegisterToken = searchParams.get('token') || searchParams.get('session') || '';
-  if (!dedicatedRegisterToken) {
-    if (pathWithoutQuery.startsWith('/candidate/register/')) {
-      dedicatedRegisterToken = pathWithoutQuery.replace('/candidate/register/', '').trim();
-    } else if (pathWithoutQuery.startsWith('/register/')) {
-      dedicatedRegisterToken = pathWithoutQuery.replace('/register/', '').trim();
-    } else if (pathWithoutQuery.startsWith('/candidate-register/')) {
-      dedicatedRegisterToken = pathWithoutQuery.replace('/candidate-register/', '').trim();
-    } else if (pathWithoutQuery.startsWith('/apply/')) {
-      dedicatedRegisterToken = pathWithoutQuery.replace('/apply/', '').trim();
-    }
-  }
-
-  const isResetPasswordRoute =
-    pathWithoutQuery === '/reset-password' ||
-    pathWithoutQuery.startsWith('/reset-password/') ||
-    pathWithoutQuery === '/forgot-password';
-
-  let resetPasswordToken = searchParams.get('token') || searchParams.get('t') || '';
-  if (!resetPasswordToken && pathWithoutQuery.startsWith('/reset-password/')) {
-    resetPasswordToken = pathWithoutQuery.replace('/reset-password/', '').trim();
-  }
-
-  const isCandidateRoute =
-    pathWithoutQuery.startsWith('/candidate/check-in') ||
-    pathWithoutQuery.startsWith('/check-in') ||
-    pathWithoutQuery.startsWith('/candidate/checkin') ||
-    pathWithoutQuery.startsWith('/checkin');
-
-  let dedicatedToken = '';
-  if (pathWithoutQuery.startsWith('/candidate/check-in/')) {
-    dedicatedToken = pathWithoutQuery.replace('/candidate/check-in/', '').trim();
-  } else if (pathWithoutQuery.startsWith('/check-in/')) {
-    dedicatedToken = pathWithoutQuery.replace('/check-in/', '').trim();
-  } else if (pathWithoutQuery.startsWith('/candidate/checkin/')) {
-    dedicatedToken = pathWithoutQuery.replace('/candidate/checkin/', '').trim();
-  } else if (pathWithoutQuery.startsWith('/checkin/')) {
-    dedicatedToken = pathWithoutQuery.replace('/checkin/', '').trim();
-  } else {
-    dedicatedToken = searchParams.get('token') || searchParams.get('appointment') || 'WCR-APPT-901';
-  }
-
-  const isCompleteRoute = pathWithoutQuery === '/registration-complete' || pathWithoutQuery === '/thank-you';
-
-  const docViewerMatch = pathWithoutQuery.match(/^\/candidate\/([^/]+)\/(resume|gov-id)/);
-  const docCandidateId = docViewerMatch ? docViewerMatch[1] : '';
-  const docViewerType = (docViewerMatch ? (docViewerMatch[2] === 'resume' ? 'RESUME' : 'GOVERNMENT_ID') : '') as 'RESUME' | 'GOVERNMENT_ID' | '';
-
-  const [routeCandidate, setRouteCandidate] = useState<Candidate | null>(null);
-  const [routeCandidateLoading, setRouteCandidateLoading] = useState<boolean>(false);
-
-  useEffect(() => {
-    if (docCandidateId) {
-      setRouteCandidateLoading(true);
-      fetch(`/api/candidates/${docCandidateId}?role=${currentRole}&userId=${currentUserId}`)
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success && data.candidate) {
-            setRouteCandidate(data.candidate);
-          }
-        })
-        .catch((err) => console.error('Failed fetching route candidate', err))
-        .finally(() => setRouteCandidateLoading(false));
-    }
-  }, [docCandidateId, currentRole, currentUserId]);
 
   // ==========================================
   // DEDICATED GENERAL WCR BLANK REGISTRATION ROUTE
@@ -1096,9 +906,8 @@ export default function App() {
           onClose={() => setActiveModal(null)}
           onNavigateToReset={(token) => {
             setActiveModal(null);
-            const fullPath = `/reset-password?token=${encodeURIComponent(token)}`;
-            window.history.pushState({}, '', fullPath);
-            setRoutePath(fullPath);
+            window.history.pushState({}, '', `/reset-password?token=${encodeURIComponent(token)}`);
+            setRoutePath('/reset-password');
           }}
         />
       )}

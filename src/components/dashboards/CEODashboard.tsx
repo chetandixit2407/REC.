@@ -9,35 +9,20 @@ import {
   MapPin,
   FileText,
 } from 'lucide-react';
-import type { Candidate, Interview, Room, User, PersonalTask, Notification } from '../../types/index.ts';
-import { PersonalScopeWidget } from '../PersonalScopeWidget.tsx';
+import type { Candidate, Interview, Room } from '../../types/index.ts';
 
 interface CEODashboardProps {
   candidates: Candidate[];
   interviews: Interview[];
   rooms: Room[];
-  currentUser?: User | null;
-  personalTasks?: PersonalTask[];
-  notifications?: Notification[];
-  onTogglePersonalTask?: (id: string) => void;
-  onAddPersonalTask?: (task: any) => void;
-  onDeletePersonalTask?: (id: string) => void;
   onOpenDossier: (candidateId: string) => void;
-  onOpenSwitchUser?: () => void;
 }
 
 export const CEODashboard: React.FC<CEODashboardProps> = ({
   candidates,
   interviews,
   rooms,
-  currentUser,
-  personalTasks = [],
-  notifications = [],
-  onTogglePersonalTask = () => {},
-  onAddPersonalTask = () => {},
-  onDeletePersonalTask = () => {},
   onOpenDossier,
-  onOpenSwitchUser,
 }) => {
   const activeCandidates = candidates.filter((c) => c.status !== 'CHECKED_OUT' && c.status !== 'SCHEDULED');
   const offeredCount = candidates.filter((c) => c.status === 'OFFERED' || c.status === 'COMPLETED').length;
@@ -45,20 +30,6 @@ export const CEODashboard: React.FC<CEODashboardProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      {/* Isolated Personal Dashboard Hub */}
-      <PersonalScopeWidget
-        currentUser={currentUser || null}
-        tasks={personalTasks}
-        candidates={candidates}
-        interviews={interviews}
-        notifications={notifications}
-        onToggleTask={onTogglePersonalTask}
-        onAddTask={onAddPersonalTask}
-        onDeleteTask={onDeletePersonalTask}
-        onOpenDossier={onOpenDossier}
-        onOpenSwitchUser={onOpenSwitchUser}
-      />
-
       {/* Executive Banner */}
       <div className="p-6 bg-gradient-to-r from-slate-900 via-slate-900 to-amber-950/40 border border-slate-800 rounded-3xl shadow-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="space-y-1">

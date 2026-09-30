@@ -24,21 +24,6 @@ interface QRPassModalProps {
   onLaunchGeneralRegister?: () => void;
 }
 
-export const getPublicAppOrigin = (): string => {
-  if (typeof window !== 'undefined') {
-    const origin = window.location.origin;
-    const hostname = window.location.hostname;
-    // If running on a public non-localhost domain, use it. But if it's ais-dev sandbox, prefer shared ais-pre domain for public QR scanning.
-    if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1' && hostname !== '0.0.0.0') {
-      if (hostname.includes('ais-dev-')) {
-        return origin.replace('ais-dev-', 'ais-pre-');
-      }
-      return origin;
-    }
-  }
-  return 'https://ais-pre-lfkvnbzsmhzvrfyeghollt-870296140886.asia-east1.run.app';
-};
-
 export const QRPassModal: React.FC<QRPassModalProps> = ({
   onClose,
   onLaunchCheckIn,
@@ -62,16 +47,14 @@ export const QRPassModal: React.FC<QRPassModalProps> = ({
   const [newTime, setNewTime] = useState<string>('03:00 PM');
   const [generating, setGenerating] = useState<boolean>(false);
 
-  const effectiveOrigin = getPublicAppOrigin();
-
   useEffect(() => {
     fetchSessions();
     generateGeneralQR();
-  }, [effectiveOrigin]);
+  }, []);
 
   const generateGeneralQR = () => {
-    const generalUrl = `${effectiveOrigin}/register`;
-    console.log('[WCR QR GENERATOR] QR_TARGET_URL =', generalUrl);
+    const origin = window.location.origin;
+    const generalUrl = `${origin}/register`;
 
     QRCode.toDataURL(
       generalUrl,
@@ -111,8 +94,8 @@ export const QRPassModal: React.FC<QRPassModalProps> = ({
   // Generate QR for selected scheduled session
   useEffect(() => {
     if (!selectedSession) return;
-    const scanUrl = `${effectiveOrigin}/candidate/check-in/${selectedSession.token}`;
-    console.log('[WCR QR GENERATOR] SCHEDULED_QR_TARGET_URL =', scanUrl);
+    const origin = window.location.origin;
+    const scanUrl = `${origin}/candidate/check-in/${selectedSession.token}`;
 
     QRCode.toDataURL(
       scanUrl,
@@ -126,7 +109,7 @@ export const QRPassModal: React.FC<QRPassModalProps> = ({
         if (!err && url) setScheduledQrDataUrl(url);
       }
     );
-  }, [selectedSession, effectiveOrigin]);
+  }, [selectedSession]);
 
   const handleCopy = (token: string) => {
     navigator.clipboard.writeText(token);
@@ -169,9 +152,10 @@ export const QRPassModal: React.FC<QRPassModalProps> = ({
     }
   };
 
-  const generalScanUrl = `${effectiveOrigin}/register`;
+  const currentOrigin = window.location.origin;
+  const generalScanUrl = `${currentOrigin}/register`;
   const scheduledScanUrl = selectedSession
-    ? `${effectiveOrigin}/candidate/check-in/${selectedSession.token}`
+    ? `${currentOrigin}/candidate/check-in/${selectedSession.token}`
     : '';
 
   // Standee Printable View

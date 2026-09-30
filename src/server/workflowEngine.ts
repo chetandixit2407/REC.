@@ -60,57 +60,10 @@ class EventWorkflowEngine {
     const timestamp = new Date().toISOString();
     const timeFormatted = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-    // Step A: Generate Role-Based Notifications & User-Scoped Personal Alerts
+    // Step A: Generate Role-Based Notifications
     const notificationsToCreate: Notification[] = [];
-    const db = dbService.get();
 
-    // Resolve matching host staff user
-    let hostUser: any = null;
-    if (interview?.interviewerId) {
-      hostUser = db.users.find((u) => u.id === interview.interviewerId || u.userId === interview.interviewerId);
-    }
-    if (!hostUser && candidate.personToMeet) {
-      const p = candidate.personToMeet.toLowerCase();
-      hostUser = db.users.find((u) => p.includes(u.name.toLowerCase().split(' ')[0]) || (u.username && p.includes(u.username.toLowerCase())));
-    }
-    if (!hostUser && interview?.interviewerName) {
-      const iName = interview.interviewerName.toLowerCase();
-      hostUser = db.users.find((u) => iName.includes(u.name.toLowerCase().split(' ')[0]) || (u.username && iName.includes(u.username.toLowerCase())));
-    }
-
-    // 1. Direct Isolated Personal Alert to Host (Nisha, Shriyanshi, Kimmi, Lalit, etc.)
-    if (hostUser) {
-      notificationsToCreate.push({
-        id: `notif-${Date.now()}-host-${hostUser.id}`,
-        recipientRole: hostUser.role,
-        recipientUserId: hostUser.id,
-        title: `🔔 NEW CANDIDATE ARRIVED: ${candidate.fullName}`,
-        message: `${candidate.fullName} has arrived to meet you for ${candidate.position}. Purpose: ${candidate.purpose || 'Interview'}. Location: Reception Lounge.`,
-        priority: 'HIGH',
-        eventType: 'CANDIDATE_ARRIVED',
-        entityId: candidate.id,
-        entityType: 'CANDIDATE',
-        read: false,
-        createdAt: timestamp,
-        actionButtons: [
-          { label: 'Assign Room', actionKey: 'ASSIGN_ROOM', payload: { candidateId: candidate.id, interviewId: interview?.id } },
-          { label: 'View Profile', actionKey: 'VIEW_CANDIDATE', payload: { candidateId: candidate.id } },
-        ],
-        payload: {
-          candidateName: candidate.fullName,
-          position: candidate.position,
-          personToMeet: candidate.personToMeet || hostUser.name,
-          arrived: timeFormatted,
-          currentLocation: candidate.currentLocation,
-          experience: candidate.totalExperience,
-          phone: candidate.phone,
-          email: candidate.email,
-          livePhoto: candidate.livePhoto,
-        },
-      });
-    }
-
-    // HR General Operation Notification
+    // HR Notification: FULL dossier
     notificationsToCreate.push({
       id: `notif-${Date.now()}-hr`,
       recipientRole: 'HR',
@@ -261,26 +214,6 @@ class EventWorkflowEngine {
     dbService.update((draft) => {
       // Append notifications
       draft.notifications.unshift(...notificationsToCreate);
-
-      // Auto-assign personal task to host user
-      if (hostUser) {
-        draft.personalTasks = draft.personalTasks || [];
-        draft.personalTasks.unshift({
-          id: `pt-${Date.now()}-host`,
-          userId: hostUser.id,
-          title: `Candidate Waiting: ${candidate.fullName}`,
-          description: `Arrived for ${candidate.position}. Purpose: ${candidate.purpose || 'Interview'}. Assigned to you.`,
-          category: 'CANDIDATE_REVIEW',
-          status: 'PENDING',
-          priority: 'HIGH',
-          relatedCandidateId: candidate.id,
-          relatedCandidateName: candidate.fullName,
-          relatedInterviewId: interview?.id,
-          dueDate: 'Immediate / Today',
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        });
-      }
 
       // Add Timeline entry
       draft.timelineEvents.unshift(
@@ -737,17 +670,14 @@ class EventWorkflowEngine {
           cand.currentInterviewId = newIntv.id;
         }
 
-        // Notify Next Interviewer (Kimmi Mam, Lalit Sir, or Assigned Interviewer)
+        // Notify Next Interviewer
         if (nextInterviewerId) {
-          const targetUser = draft.users.find((u) => u.id === nextInterviewerId);
-          const targetRole = targetUser?.role || 'INTERVIEWER';
-
           draft.notifications.unshift({
             id: `notif-${Date.now()}-next-intv`,
-            recipientRole: targetRole,
+            recipientRole: 'INTERVIEWER',
             recipientUserId: nextInterviewerId,
-            title: `🔔 CANDIDATE WAITING FOR YOU: ${candName}`,
-            message: `${candName} has cleared ${intv.roundName} with ${interviewerName} and is waiting for ${newIntv.roundName} with you.`,
+            title: 'Candidate Ready for Next Round',
+            message: `${candName} has cleared ${intv.roundName} and is waiting for ${newIntv.roundName} with you.`,
             priority: 'HIGH',
             eventType: 'NEXT_INTERVIEW_CREATED',
             entityId: newIntv.id,
@@ -756,33 +686,7 @@ class EventWorkflowEngine {
             createdAt: timestamp,
             actionButtons: [
               { label: 'View Profile', actionKey: 'VIEW_CANDIDATE', payload: { candidateId: candId } },
-              { label: 'Start Interview', actionKey: 'START_INTERVIEW', payload: { interviewId: newIntv.id } },
             ],
-            payload: {
-              candidateName: candName,
-              stage: newIntv.roundName,
-              previousInterviewer: interviewerName,
-              previousFeedback: notes,
-              currentLocation: 'Waiting Area / Lounge',
-            },
-          });
-
-          // Auto-create personal task for next interviewer
-          draft.personalTasks = draft.personalTasks || [];
-          draft.personalTasks.unshift({
-            id: `pt-${Date.now()}-next-intv`,
-            userId: nextInterviewerId,
-            title: `Conduct ${newIntv.roundName}: ${candName}`,
-            description: `Candidate cleared previous round with ${interviewerName}. Notes: ${notes || 'Proceed to evaluation'}.`,
-            category: 'INTERVIEW',
-            status: 'PENDING',
-            priority: 'HIGH',
-            relatedCandidateId: candId,
-            relatedCandidateName: candName,
-            relatedInterviewId: newIntv.id,
-            dueDate: 'Immediate / Today',
-            createdAt: timestamp,
-            updatedAt: timestamp,
           });
         }
 

@@ -26,37 +26,14 @@ import {
   ShieldAlert,
   AlertCircle,
 } from 'lucide-react';
-import type { AuditLog, RoleFieldVisibility, UserRole, PasswordResetRequest, User, PersonalTask, Candidate, Interview, Notification } from '../../types/index.ts';
+import type { AuditLog, RoleFieldVisibility, UserRole, PasswordResetRequest } from '../../types/index.ts';
 import { AdminChangeCredentialsModal } from '../AdminChangeCredentialsModal.tsx';
-import { PersonalScopeWidget } from '../PersonalScopeWidget.tsx';
 
 interface AdminDashboardProps {
-  currentUser?: User | null;
-  personalTasks?: PersonalTask[];
-  candidates?: Candidate[];
-  interviews?: Interview[];
-  notifications?: Notification[];
-  onTogglePersonalTask?: (id: string) => void;
-  onAddPersonalTask?: (task: any) => void;
-  onDeletePersonalTask?: (id: string) => void;
-  onOpenDossier?: (candidateId: string) => void;
-  onOpenSwitchUser?: () => void;
   onRefresh: () => void;
 }
 
-export const AdminDashboard: React.FC<AdminDashboardProps> = ({
-  currentUser,
-  personalTasks = [],
-  candidates = [],
-  interviews = [],
-  notifications = [],
-  onTogglePersonalTask = () => {},
-  onAddPersonalTask = () => {},
-  onDeletePersonalTask = () => {},
-  onOpenDossier = () => {},
-  onOpenSwitchUser,
-  onRefresh,
-}) => {
+export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onRefresh }) => {
   const [activeTab, setActiveTab] = useState<'users' | 'resets' | 'visibility' | 'audit' | 'settings'>('users');
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
@@ -339,20 +316,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      {/* Isolated Personal Dashboard Hub */}
-      <PersonalScopeWidget
-        currentUser={currentUser || null}
-        tasks={personalTasks}
-        candidates={candidates}
-        interviews={interviews}
-        notifications={notifications}
-        onToggleTask={onTogglePersonalTask}
-        onAddTask={onAddPersonalTask}
-        onDeleteTask={onDeletePersonalTask}
-        onOpenDossier={onOpenDossier}
-        onOpenSwitchUser={onOpenSwitchUser}
-      />
-
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
         <div>

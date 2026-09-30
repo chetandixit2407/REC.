@@ -68,12 +68,9 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
   };
 
   const copyResetUrl = () => {
-    const tokenToUse = successData?.request?.token;
-    if (!tokenToUse) return;
-    const fullUrl = `${window.location.origin}/reset-password?token=${encodeURIComponent(tokenToUse)}`;
-    if (navigator?.clipboard?.writeText) {
-      navigator.clipboard.writeText(fullUrl).catch(() => {});
-    }
+    if (!successData?.request?.resetLink) return;
+    const fullUrl = `${window.location.origin}${successData.request.resetLink}`;
+    navigator.clipboard.writeText(fullUrl);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2500);
   };

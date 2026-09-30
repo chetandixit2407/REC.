@@ -21,7 +21,6 @@ import type {
   GovernmentIdDocument,
   CandidateValidationResult,
   PasswordResetRequest,
-  PersonalTask,
 } from './src/types/index.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1655,307 +1654,6 @@ async function startServer() {
     res.json({ success: true, message: 'Logged out successfully' });
   });
 
-  // Helper to extract and verify authenticated staff user
-  function getAuthUser(req: Request): { user: any | null; role: UserRole; isDeactivated?: boolean } {
-    const authHeader = req.headers.authorization;
-    const xUserId = req.headers['x-user-id'] as string;
-    const xToken = req.headers['x-auth-token'] as string;
-    const queryUserId = req.query.userId as string;
-    const queryRole = req.query.role as UserRole;
-    const db = dbService.get();
-
-    let targetId = '';
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.substring(7).trim();
-      const match = token.match(/^wcr-auth-(usr-[a-z0-9-]+)-\d+$/i) || token.match(/^(usr-[a-z0-9-]+)$/i);
-      if (match) {
-        targetId = match[1];
-      } else {
-        const u = db.users.find((x) => token.includes(x.id) || token.includes(x.email));
-        if (u) targetId = u.id;
-      }
-    }
-
-    if (!targetId) targetId = xUserId || xToken || queryUserId || '';
-
-    if (targetId) {
-      const user = db.users.find(
-        (u) =>
-          u.id === targetId ||
-          u.userId === targetId ||
-          u.email.toLowerCase() === targetId.toLowerCase() ||
-          u.username?.toLowerCase() === targetId.toLowerCase()
-      );
-      if (user) {
-        if (user.isActive === false) {
-          return { user: null, role: user.role, isDeactivated: true };
-        }
-        return { user, role: user.role };
-      }
-    }
-
-    if (queryRole) {
-      const roleDefaultUser = db.users.find((u) => u.role === queryRole && u.isActive !== false);
-      if (roleDefaultUser) {
-        return { user: roleDefaultUser, role: queryRole };
-      }
-      return { user: null, role: queryRole };
-    }
-
-    const defaultUser = db.users.find((u) => u.role === 'HR') || db.users[0];
-    return { user: defaultUser, role: defaultUser.role };
-  }
-
-  // Current authenticated user session profile
-  app.get('/api/auth/me', (req: Request, res: Response) => {
-    const { user, isDeactivated } = getAuthUser(req);
-    if (isDeactivated) {
-      return res.status(403).json({ success: false, error: 'Account has been deactivated. Please contact Administrator.' });
-    }
-    if (!user) {
-      return res.status(401).json({ success: false, error: 'Unauthorized: Valid authentication session required.' });
-    }
-    const { passwordHash: _hash, ...safeUser } = user;
-    res.json({
-      success: true,
-      user: safeUser,
-      role: user.role,
-      permissions: user.permissions || ROLE_PERMISSIONS[user.role as UserRole] || [],
-    });
-  });
-
-  // ==========================================
-  // ISOLATED PERSONAL DASHBOARD DATA ENDPOINT
-  // Every user receives only their own assigned candidates, personal tasks, and authorized role data
-  // ==========================================
-  app.get('/api/dashboard/me', (req: Request, res: Response) => {
-    const { user, isDeactivated } = getAuthUser(req);
-    if (isDeactivated) {
-      return res.status(403).json({ success: false, error: 'Account has been deactivated. Please contact Administrator.' });
-    }
-    if (!user) {
-      return res.status(401).json({ success: false, error: 'Unauthorized: Valid authentication session required.' });
-    }
-
-    const db = dbService.get();
-    const userFirstName = (user.name || '').toLowerCase().split(' ')[0];
-
-    // 1. My Personal Tasks (Scoped by userId)
-    const myTasks = (db.personalTasks || []).filter((t) => t.userId === user.id);
-
-    // 2. My Interviews (Assigned to this specific user or interviewerName matches)
-    const myInterviews = db.interviews.filter(
-      (i) => i.interviewerId === user.id || (userFirstName && i.interviewerName.toLowerCase().includes(userFirstName))
-    );
-
-    // 3. My Candidates (Scoped to user's assigned interviews or personToMeet)
-    const myCandidates = db.candidates.filter(
-      (c) =>
-        !(c as any).isDeleted &&
-        (c.interviewerId === user.id ||
-          (c.personToMeet && userFirstName && c.personToMeet.toLowerCase().includes(userFirstName)) ||
-          (c.interviewerName && userFirstName && c.interviewerName.toLowerCase().includes(userFirstName)))
-    );
-
-    // 4. My Notifications (Scoped strictly to recipientUserId === user.id OR role-wide broadcasts)
-    const myNotifications = db.notifications.filter(
-      (n) => n.recipientUserId === user.id || (n.recipientRole === user.role && !n.recipientUserId)
-    );
-
-    const myWaitingCandidates = myCandidates.filter(
-      (c) => c.status === 'ARRIVED' || c.status === 'WAITING' || c.status === 'ROOM_ASSIGNED'
-    );
-    const myPendingTasks = myTasks.filter((t) => t.status === 'PENDING' || t.status === 'IN_PROGRESS');
-    const myUnreadNotifs = myNotifications.filter((n) => !n.read);
-
-    const { passwordHash: _hash, ...safeUser } = user;
-
-    res.json({
-      success: true,
-      user: safeUser,
-      role: user.role,
-      effectivePermissions: user.permissions || ROLE_PERMISSIONS[user.role as UserRole] || [],
-      personalScope: {
-        myCandidatesCount: myCandidates.length,
-        myWaitingCount: myWaitingCandidates.length,
-        myInterviewsCount: myInterviews.length,
-        myPendingTasksCount: myPendingTasks.length,
-        myUnreadNotifsCount: myUnreadNotifs.length,
-      },
-      myTasks,
-      myInterviews,
-      myCandidates,
-      myNotifications,
-      roleAuthorizedData: {
-        totalRooms: db.rooms.length,
-        occupiedRooms: db.rooms.filter((r) => r.status === 'OCCUPIED' || r.status === 'ASSIGNED').length,
-        waitingTotal: db.candidates.filter((c) => !(c as any).isDeleted && (c.status === 'ARRIVED' || c.status === 'WAITING')).length,
-        activeTotal: db.candidates.filter((c) => !(c as any).isDeleted && c.status !== 'CHECKED_OUT' && c.status !== 'SCHEDULED').length,
-      },
-    });
-  });
-
-  // Alias
-  app.get('/api/dashboard', (req: Request, res: Response) => {
-    const { user, isDeactivated } = getAuthUser(req);
-    if (isDeactivated) {
-      return res.status(403).json({ success: false, error: 'Account has been deactivated. Please contact Administrator.' });
-    }
-    if (!user) {
-      return res.status(401).json({ success: false, error: 'Unauthorized' });
-    }
-    const db = dbService.get();
-    const userFirstName = (user.name || '').toLowerCase().split(' ')[0];
-    const myTasks = (db.personalTasks || []).filter((t) => t.userId === user.id);
-    const myInterviews = db.interviews.filter(
-      (i) => i.interviewerId === user.id || (userFirstName && i.interviewerName.toLowerCase().includes(userFirstName))
-    );
-    const myCandidates = db.candidates.filter(
-      (c) =>
-        !(c as any).isDeleted &&
-        (c.interviewerId === user.id ||
-          (c.personToMeet && userFirstName && c.personToMeet.toLowerCase().includes(userFirstName)))
-    );
-    const myNotifications = db.notifications.filter(
-      (n) => n.recipientUserId === user.id || (n.recipientRole === user.role && !n.recipientUserId)
-    );
-    const { passwordHash: _hash, ...safeUser } = user;
-    res.json({
-      success: true,
-      user: safeUser,
-      role: user.role,
-      effectivePermissions: user.permissions || ROLE_PERMISSIONS[user.role as UserRole] || [],
-      personalScope: {
-        myCandidatesCount: myCandidates.length,
-        myWaitingCount: myCandidates.filter((c) => c.status === 'ARRIVED' || c.status === 'WAITING').length,
-        myInterviewsCount: myInterviews.length,
-        myPendingTasksCount: myTasks.filter((t) => t.status === 'PENDING').length,
-        myUnreadNotifsCount: myNotifications.filter((n) => !n.read).length,
-      },
-      myTasks,
-      myInterviews,
-      myCandidates,
-      myNotifications,
-    });
-  });
-
-  // ==========================================
-  // PERSONAL TASKS MANAGEMENT ENDPOINTS
-  // ==========================================
-  app.get('/api/tasks/personal', (req: Request, res: Response) => {
-    const { user, isDeactivated } = getAuthUser(req);
-    if (isDeactivated) return res.status(403).json({ success: false, error: 'Deactivated account.' });
-    if (!user) return res.status(401).json({ success: false, error: 'Unauthorized.' });
-
-    const db = dbService.get();
-    const tasks = (db.personalTasks || []).filter((t) => t.userId === user.id);
-    res.json({ success: true, tasks });
-  });
-
-  app.post('/api/tasks/personal', (req: Request, res: Response) => {
-    const { user } = getAuthUser(req);
-    if (!user) return res.status(401).json({ success: false, error: 'Unauthorized.' });
-
-    const { title, description, category, priority, relatedCandidateId, relatedCandidateName, dueDate } = req.body;
-    if (!title || !title.trim()) {
-      return res.status(400).json({ success: false, error: 'Task title is required.' });
-    }
-
-    const now = new Date().toISOString();
-    const newTask: PersonalTask = {
-      id: `pt-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      userId: user.id,
-      title: title.trim(),
-      description: description?.trim() || '',
-      category: category || 'GENERAL',
-      status: 'PENDING',
-      priority: priority || 'NORMAL',
-      relatedCandidateId,
-      relatedCandidateName,
-      dueDate,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    dbService.update((draft) => {
-      draft.personalTasks = draft.personalTasks || [];
-      draft.personalTasks.unshift(newTask);
-    });
-
-    res.json({ success: true, task: newTask });
-  });
-
-  app.post('/api/tasks/personal/:id/toggle', (req: Request, res: Response) => {
-    const { user } = getAuthUser(req);
-    const { id } = req.params;
-    if (!user) return res.status(401).json({ success: false, error: 'Unauthorized.' });
-
-    let updatedTask: PersonalTask | null = null;
-    const now = new Date().toISOString();
-
-    dbService.update((draft) => {
-      draft.personalTasks = draft.personalTasks || [];
-      const task = draft.personalTasks.find((t) => t.id === id);
-      if (!task) return;
-
-      // IDOR protection: User can only modify their own task, unless Admin/CEO
-      if (task.userId !== user.id && user.role !== 'ADMIN' && user.role !== 'CEO') {
-        throw new Error('403 Forbidden: Cannot modify another user\'s private task.');
-      }
-
-      task.status = task.status === 'COMPLETED' ? 'PENDING' : 'COMPLETED';
-      task.completedAt = task.status === 'COMPLETED' ? now : undefined;
-      task.updatedAt = now;
-      updatedTask = { ...task };
-    });
-
-    if (!updatedTask) {
-      return res.status(404).json({ success: false, error: 'Task not found or access denied.' });
-    }
-
-    res.json({ success: true, task: updatedTask });
-  });
-
-  app.delete('/api/tasks/personal/:id', (req: Request, res: Response) => {
-    const { user } = getAuthUser(req);
-    const { id } = req.params;
-    if (!user) return res.status(401).json({ success: false, error: 'Unauthorized.' });
-
-    let deleted = false;
-    dbService.update((draft) => {
-      draft.personalTasks = draft.personalTasks || [];
-      const task = draft.personalTasks.find((t) => t.id === id);
-      if (!task) return;
-      if (task.userId !== user.id && user.role !== 'ADMIN' && user.role !== 'CEO') {
-        throw new Error('403 Forbidden');
-      }
-      draft.personalTasks = draft.personalTasks.filter((t) => t.id !== id);
-      deleted = true;
-    });
-
-    res.json({ success: deleted, message: deleted ? 'Task deleted.' : 'Task not found.' });
-  });
-
-  // IDOR Protected Route: Another user's private dashboard
-  app.get('/api/users/:targetUserId/dashboard', (req: Request, res: Response) => {
-    const { user, role } = getAuthUser(req);
-    const { targetUserId } = req.params;
-    if (!user || (user.id !== targetUserId && role !== 'ADMIN' && role !== 'CEO')) {
-      return res.status(403).json({
-        success: false,
-        error: '403 FORBIDDEN: Access to another staff member\'s personal dashboard is strictly restricted.',
-      });
-    }
-
-    const db = dbService.get();
-    const target = db.users.find((u) => u.id === targetUserId);
-    if (!target) return res.status(404).json({ success: false, error: 'User not found.' });
-
-    const myTasks = (db.personalTasks || []).filter((t) => t.userId === targetUserId);
-    const { passwordHash: _h, ...safeTarget } = target;
-    res.json({ success: true, user: safeTarget, tasks: myTasks });
-  });
-
   // ==========================================
   // FORGOT PASSWORD & SECURE VERIFICATION FLOW
   // ==========================================
@@ -2845,15 +2543,6 @@ async function startServer() {
   app.get('/api/candidates/:id', (req: Request, res: Response) => {
     const { id } = req.params;
     const role = (req.query.role as UserRole) || 'HR';
-
-    // Test 4 requirement: Pantry tries HR candidate API -> 403 FORBIDDEN
-    if (role === 'PANTRY') {
-      return res.status(403).json({
-        success: false,
-        error: '403 FORBIDDEN: Pantry stewards only receive task-level hospitality operational data. Full candidate dossier access is restricted.',
-      });
-    }
-
     const includeDeleted = req.query.includeDeleted === 'true' || role === 'ADMIN';
     const db = dbService.get();
 
@@ -2940,10 +2629,7 @@ async function startServer() {
     const editorName = (req.query.userName as string) || (req.headers['x-user-name'] as string) || (role === 'HR' ? 'Sneha Patel (HR)' : `${role} Staff`);
 
     if (role !== 'HR' && role !== 'ADMIN' && role !== 'CEO') {
-      return res.status(403).json({
-        success: false,
-        error: `403 FORBIDDEN: ${role} staff cannot directly edit candidate profiles. Please submit a Change Request.`,
-      });
+      return res.status(403).json({ success: false, error: 'Unauthorized: Only HR, Admin, or CEO can edit candidate profiles.' });
     }
 
     const {
@@ -3815,31 +3501,9 @@ async function startServer() {
       appType: 'spa',
     });
     app.use(vite.middlewares);
-
-    // Guaranteed SPA HTML Fallback for any client-side route
-    app.use('*', async (req: Request, res: Response, next) => {
-      if (req.originalUrl.startsWith('/api/')) {
-        return res.status(404).json({ success: false, error: `API endpoint ${req.originalUrl} not found.` });
-      }
-      try {
-        const indexPath = path.resolve(__dirname, 'index.html');
-        if (fs.existsSync(indexPath)) {
-          let template = fs.readFileSync(indexPath, 'utf-8');
-          template = await vite.transformIndexHtml(req.originalUrl, template);
-          return res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
-        }
-        next();
-      } catch (e) {
-        vite.ssrFixStacktrace(e as Error);
-        next(e);
-      }
-    });
   } else {
     app.use(express.static(path.resolve(__dirname, 'dist')));
     app.get('*', (req: Request, res: Response) => {
-      if (req.originalUrl.startsWith('/api/')) {
-        return res.status(404).json({ success: false, error: `API endpoint ${req.originalUrl} not found.` });
-      }
       res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
     });
   }

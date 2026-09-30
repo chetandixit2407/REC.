@@ -56,8 +56,7 @@
         "VIEW_ASSIGNED_ROOMS",
         "REQUEST_CHANGE"
       ],
-      "isActive": true,
-      "lastLoginAt": "2026-09-30T09:09:32.049Z"
+      "isActive": true
     },
     {
       "id": "usr-pan-1",
@@ -129,7 +128,7 @@
       "username": "nisha.hr",
       "passwordHash": "wcr_office_ops_salt:443ecebefce3033bb58d041de2380c79c1552478796f39a579f1fdcfe90f881f",
       "role": "HR",
-      "designation": "Senior HR Manager",
+      "designation": "Lead HR & Talent Acquisition",
       "department": "HR",
       "permissions": [
         "FULL_ACCESS",
@@ -1288,36 +1287,6 @@
     }
   ],
   "notifications": [
-    {
-      "id": "notif-pwd-ceo-1790760735104",
-      "recipientRole": "CEO",
-      "title": "Staff Security Alert: Nisha",
-      "message": "Password reset request submitted by Nisha (nisha@whitecollarrealty.com).",
-      "priority": "NORMAL",
-      "eventType": "PASSWORD_RESET_REQUESTED",
-      "entityId": "rst-req-1790760735104-lmg3",
-      "entityType": "VISITOR",
-      "read": false,
-      "createdAt": "2026-09-30T09:32:15.104Z"
-    },
-    {
-      "id": "notif-pwd-1790760735104",
-      "recipientRole": "ADMIN",
-      "title": "Password Reset Requested: Nisha",
-      "message": "Nisha (HR - HR) requested a secure password reset link. Admin approval / token verification required.",
-      "priority": "HIGH",
-      "eventType": "PASSWORD_RESET_REQUESTED",
-      "entityId": "rst-req-1790760735104-lmg3",
-      "entityType": "VISITOR",
-      "read": false,
-      "createdAt": "2026-09-30T09:32:15.104Z",
-      "actionButtons": [
-        {
-          "label": "Review & Approve",
-          "actionKey": "APPROVE_PASSWORD_RESET"
-        }
-      ]
-    },
     {
       "id": "notif-pwd-done-1790756779265",
       "recipientRole": "ADMIN",
@@ -4062,39 +4031,6 @@
   ],
   "auditLogs": [
     {
-      "id": "aud-1790760735104-pw-req",
-      "timestamp": "2026-09-30T09:32:15.104Z",
-      "actorUserId": "usr-hr-nisha",
-      "actorName": "Nisha",
-      "actorRole": "HR",
-      "action": "PASSWORD_RESET_REQUESTED",
-      "details": "Nisha requested password reset link via staff portal. Token generated with 30m TTL. Status: PENDING_APPROVAL.",
-      "entityId": "usr-hr-nisha",
-      "entityType": "USER"
-    },
-    {
-      "id": "aud-1790759372049-login",
-      "timestamp": "2026-09-30T09:09:32.049Z",
-      "actorUserId": "usr-rec-1",
-      "actorName": "Ananya Sen",
-      "actorRole": "RECEPTION",
-      "action": "LOGIN",
-      "details": "Ananya Sen (RECEPTION) logged in to operations console.",
-      "entityId": "usr-rec-1",
-      "entityType": "USER"
-    },
-    {
-      "id": "aud-1790759371698-login",
-      "timestamp": "2026-09-30T09:09:31.698Z",
-      "actorUserId": "usr-rec-1",
-      "actorName": "Ananya Sen",
-      "actorRole": "RECEPTION",
-      "action": "LOGIN",
-      "details": "Ananya Sen (RECEPTION) logged in to operations console.",
-      "entityId": "usr-rec-1",
-      "entityType": "USER"
-    },
-    {
       "id": "aud-1790756779379-adm-cred",
       "timestamp": "2026-09-30T08:26:19.378Z",
       "actorUserId": "usr-admin-sameer",
@@ -5052,20 +4988,6 @@
   "changeRequests": [],
   "passwordResetRequests": [
     {
-      "id": "rst-req-1790760735104-lmg3",
-      "userId": "usr-hr-nisha",
-      "userEmail": "nisha@whitecollarrealty.com",
-      "userName": "Nisha",
-      "userRole": "HR",
-      "token": "rst_1790760735104_iyot53sj",
-      "status": "PENDING_APPROVAL",
-      "requestedAt": "2026-09-30T09:32:15.104Z",
-      "expiresAt": "2026-09-30T10:02:15.104Z",
-      "deliveryMethod": "EMAIL_SIMULATION",
-      "resetLink": "/reset-password?token=rst_1790760735104_iyot53sj",
-      "ipAddress": "127.0.0.1"
-    },
-    {
       "id": "rst-req-1790756779139-vkxr",
       "userId": "usr-hr-nisha",
       "userEmail": "nisha@whitecollarrealty.com",
@@ -5100,163 +5022,6 @@
       "approvedBy": "usr-admin-sameer",
       "approvedByName": "Sameer Sir (Admin)",
       "completedAt": "2026-09-30T08:25:33.373Z"
-    }
-  ],
-  "personalTasks": [
-    {
-      "id": "pt-nisha-1",
-      "userId": "usr-hr-nisha",
-      "title": "Conduct Round 1 Interview: Rahul Sharma",
-      "description": "Evaluate candidate on sales track record, luxury residential network, and commercial acumen.",
-      "category": "INTERVIEW",
-      "status": "PENDING",
-      "priority": "HIGH",
-      "relatedCandidateId": "cand-1",
-      "relatedCandidateName": "Rahul Sharma",
-      "relatedInterviewId": "intv-1",
-      "dueDate": "Today, 11:00 AM",
-      "createdAt": "2026-09-30T09:26:42.030Z",
-      "updatedAt": "2026-09-30T09:26:42.030Z"
-    },
-    {
-      "id": "pt-nisha-2",
-      "userId": "usr-hr-nisha",
-      "title": "Assign Interview Room for Rahul Sharma",
-      "description": "Select available meeting room or cabin once candidate check-in completes.",
-      "category": "ROOM_ALLOCATION",
-      "status": "PENDING",
-      "priority": "HIGH",
-      "relatedCandidateId": "cand-1",
-      "relatedCandidateName": "Rahul Sharma",
-      "createdAt": "2026-09-30T09:26:42.030Z",
-      "updatedAt": "2026-09-30T09:26:42.030Z"
-    },
-    {
-      "id": "pt-nisha-3",
-      "userId": "usr-hr-nisha",
-      "title": "Review Compensation Matrix for Sales Managers",
-      "description": "Ensure salary benchmarks match luxury property sales commission standards.",
-      "category": "CANDIDATE_REVIEW",
-      "status": "IN_PROGRESS",
-      "priority": "NORMAL",
-      "createdAt": "2026-09-30T09:26:42.030Z",
-      "updatedAt": "2026-09-30T09:26:42.030Z"
-    },
-    {
-      "id": "pt-shriyanshi-1",
-      "userId": "usr-hr-shriyanshi",
-      "title": "Review Candidate Dossier: Sneha Kapoor",
-      "description": "Verify leasing transaction portfolio and commercial experience with JLL.",
-      "category": "CANDIDATE_REVIEW",
-      "status": "PENDING",
-      "priority": "HIGH",
-      "relatedCandidateId": "cand-2",
-      "relatedCandidateName": "Sneha Kapoor",
-      "relatedInterviewId": "intv-2",
-      "dueDate": "Today, 01:30 PM",
-      "createdAt": "2026-09-30T09:26:42.030Z",
-      "updatedAt": "2026-09-30T09:26:42.030Z"
-    },
-    {
-      "id": "pt-shriyanshi-2",
-      "userId": "usr-hr-shriyanshi",
-      "title": "HR Intake & Culture Alignment Check",
-      "description": "Conduct preliminary screening for culture fit and notice period constraints.",
-      "category": "CANDIDATE_REVIEW",
-      "status": "PENDING",
-      "priority": "NORMAL",
-      "createdAt": "2026-09-30T09:26:42.030Z",
-      "updatedAt": "2026-09-30T09:26:42.030Z"
-    },
-    {
-      "id": "pt-kimmi-1",
-      "userId": "usr-cofounder-kimmi",
-      "title": "Leadership Evaluation Round 2: Vikram Malhotra",
-      "description": "Strategic leadership assessment for Associate Vice President - Commercial Leasing role.",
-      "category": "INTERVIEW",
-      "status": "PENDING",
-      "priority": "CRITICAL",
-      "relatedCandidateName": "Vikram Malhotra",
-      "dueDate": "Today, 03:00 PM",
-      "createdAt": "2026-09-30T09:26:42.030Z",
-      "updatedAt": "2026-09-30T09:26:42.030Z"
-    },
-    {
-      "id": "pt-kimmi-2",
-      "userId": "usr-cofounder-kimmi",
-      "title": "Review Candidate Feedback from Round 1",
-      "description": "Inspect preliminary scores and notes from HR panel before conducting Round 2.",
-      "category": "CANDIDATE_REVIEW",
-      "status": "PENDING",
-      "priority": "HIGH",
-      "createdAt": "2026-09-30T09:26:42.030Z",
-      "updatedAt": "2026-09-30T09:26:42.030Z"
-    },
-    {
-      "id": "pt-lalit-1",
-      "userId": "usr-ceo-lalit",
-      "title": "Executive Approval: Senior Leadership Candidate Offers",
-      "description": "Review final compensation packages and sign off on commercial terms.",
-      "category": "ADMIN_APPROVAL",
-      "status": "PENDING",
-      "priority": "CRITICAL",
-      "createdAt": "2026-09-30T09:26:42.030Z",
-      "updatedAt": "2026-09-30T09:26:42.030Z"
-    },
-    {
-      "id": "pt-lalit-2",
-      "userId": "usr-ceo-lalit",
-      "title": "Strategic Talent Pipeline Review",
-      "description": "Assess weekly candidate throughput across Luxury Residential & Leasing verticals.",
-      "category": "FACILITY_CHECK",
-      "status": "IN_PROGRESS",
-      "priority": "NORMAL",
-      "createdAt": "2026-09-30T09:26:42.030Z",
-      "updatedAt": "2026-09-30T09:26:42.030Z"
-    },
-    {
-      "id": "pt-sameer-1",
-      "userId": "usr-admin-sameer",
-      "title": "Review Staff Security & Password Reset Approvals",
-      "description": "Verify identity for staff password reset requests and credentials overrides.",
-      "category": "ADMIN_APPROVAL",
-      "status": "PENDING",
-      "priority": "HIGH",
-      "createdAt": "2026-09-30T09:26:42.030Z",
-      "updatedAt": "2026-09-30T09:26:42.030Z"
-    },
-    {
-      "id": "pt-sameer-2",
-      "userId": "usr-admin-sameer",
-      "title": "Inspect Office Room Allocation & Sensor State",
-      "description": "Confirm 9 operational meeting rooms & cabins are calibrated.",
-      "category": "FACILITY_CHECK",
-      "status": "COMPLETED",
-      "priority": "NORMAL",
-      "createdAt": "2026-09-30T09:26:42.030Z",
-      "updatedAt": "2026-09-30T09:26:42.030Z"
-    },
-    {
-      "id": "pt-rec-1",
-      "userId": "usr-rec-ananya",
-      "title": "Front Desk Live Arrival Camera Verification",
-      "description": "Capture photo for arriving walk-in and scheduled candidates.",
-      "category": "GENERAL",
-      "status": "PENDING",
-      "priority": "HIGH",
-      "createdAt": "2026-09-30T09:26:42.030Z",
-      "updatedAt": "2026-09-30T09:26:42.030Z"
-    },
-    {
-      "id": "pt-pan-1",
-      "userId": "usr-pan-ramesh",
-      "title": "Hospitality Service: The Skyline & Cabins",
-      "description": "Prepare mineral water and verify room readiness upon room allocation.",
-      "category": "FACILITY_CHECK",
-      "status": "PENDING",
-      "priority": "NORMAL",
-      "createdAt": "2026-09-30T09:26:42.030Z",
-      "updatedAt": "2026-09-30T09:26:42.030Z"
     }
   ]
 }

@@ -13,8 +13,6 @@ import {
   RefreshCw,
   UserCheck,
   ShieldAlert,
-  Search,
-  ExternalLink,
 } from 'lucide-react';
 
 interface ResetPasswordViewProps {
@@ -26,8 +24,8 @@ export const ResetPasswordView: React.FC<ResetPasswordViewProps> = ({
   token,
   onBackToLogin,
 }) => {
-  const [tokenInput, setTokenInput] = useState(token || '');
-  const [verifying, setVerifying] = useState(false);
+  const [tokenInput, setTokenInput] = useState(token);
+  const [verifying, setVerifying] = useState(true);
   const [verifyError, setVerifyError] = useState<string | null>(null);
   const [verifyData, setVerifyData] = useState<any>(null);
 
@@ -39,26 +37,17 @@ export const ResetPasswordView: React.FC<ResetPasswordViewProps> = ({
   const [isSuccess, setIsSuccess] = useState(false);
   const [approvingDirect, setApprovingDirect] = useState(false);
 
-  // Quick fallback token creator
-  const [quickEmail, setQuickEmail] = useState('nisha@whitecollarrealty.com');
-  const [creatingQuickToken, setCreatingQuickToken] = useState(false);
-
   useEffect(() => {
-    const effectiveToken = token || tokenInput || new URLSearchParams(window.location.search).get('token') || '';
-    if (effectiveToken) {
-      setTokenInput(effectiveToken);
-      verifyToken(effectiveToken);
+    if (token) {
+      verifyToken(token);
     } else {
       setVerifying(false);
-      setVerifyError('No password reset token provided. Enter your verification token below or generate a reset link.');
+      setVerifyError('No password reset token provided. Please check the reset link from your email.');
     }
   }, [token]);
 
   const verifyToken = async (tok: string) => {
-    if (!tok || !tok.trim()) {
-      setVerifyError('Please enter a valid reset token.');
-      return;
-    }
+    if (!tok.trim()) return;
     setVerifying(true);
     setVerifyError(null);
 
@@ -68,40 +57,13 @@ export const ResetPasswordView: React.FC<ResetPasswordViewProps> = ({
 
       if (res.ok && data.success) {
         setVerifyData(data);
-        setVerifyError(null);
       } else {
-        setVerifyData(null);
         setVerifyError(data.error || 'Invalid or expired password reset token.');
       }
     } catch (err: any) {
       setVerifyError('Network error while verifying security token.');
     } finally {
       setVerifying(false);
-    }
-  };
-
-  const handleCreateQuickReset = async (emailToUse: string) => {
-    setCreatingQuickToken(true);
-    setVerifyError(null);
-    try {
-      const res = await fetch('/api/auth/forgot-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ emailOrUsername: emailToUse }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success && data.request?.token) {
-        const freshToken = data.request.token;
-        setTokenInput(freshToken);
-        window.history.pushState({}, '', `/reset-password?token=${encodeURIComponent(freshToken)}`);
-        verifyToken(freshToken);
-      } else {
-        setVerifyError(data.error || 'Could not generate reset token.');
-      }
-    } catch (err: any) {
-      setVerifyError(err?.message || 'Failed to request reset token.');
-    } finally {
-      setCreatingQuickToken(false);
     }
   };
 
@@ -192,7 +154,7 @@ export const ResetPasswordView: React.FC<ResetPasswordViewProps> = ({
           <div>
             <h1 className="text-xl font-bold text-white tracking-tight">White Collar Realty</h1>
             <p className="text-xs text-amber-400 font-semibold tracking-wider uppercase">
-              Staff Security & Password Recovery Portal
+              Staff Security & Password Management
             </p>
           </div>
         </div>
@@ -202,7 +164,27 @@ export const ResetPasswordView: React.FC<ResetPasswordViewProps> = ({
           {verifying ? (
             <div className="py-12 text-center space-y-3">
               <div className="w-10 h-10 border-2 border-amber-400 border-t-transparent rounded-full animate-spin mx-auto" />
-              <p className="text-xs text-slate-400 font-medium">Verifying security token with server...</p>
+              <p className="text-xs text-slate-400 font-medium">Verifying reset authorization token...</p>
+            </div>
+          ) : verifyError ? (
+            /* ERROR / INVALID TOKEN STATE */
+            <div className="space-y-4 text-center">
+              <div className="w-12 h-12 bg-rose-500/20 text-rose-400 border border-rose-500/40 rounded-full flex items-center justify-center mx-auto">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Reset Token Invalid or Expired</h3>
+                <p className="text-xs text-slate-400 mt-1 leading-relaxed">{verifyError}</p>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  onClick={onBackToLogin}
+                  className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs rounded-xl border border-slate-700 transition"
+                >
+                  Return to Staff Login
+                </button>
+              </div>
             </div>
           ) : isSuccess ? (
             /* SUCCESS STATE */
@@ -213,7 +195,7 @@ export const ResetPasswordView: React.FC<ResetPasswordViewProps> = ({
               <div>
                 <h3 className="text-lg font-bold text-white">Password Updated Successfully!</h3>
                 <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                  Your new password has been securely hashed and stored. You can now log in to your personal dashboard.
+                  Your new password has been securely hashed and stored. You can now access your staff dashboard.
                 </p>
               </div>
 
@@ -236,83 +218,8 @@ export const ResetPasswordView: React.FC<ResetPasswordViewProps> = ({
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
-          ) : !verifyData ? (
-            /* TOKEN INPUT / RECOVERY STATE */
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
-                  <KeyRound className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white">Enter Password Reset Token</h3>
-                  <p className="text-xs text-slate-400">Validate time-limited verification code</p>
-                </div>
-              </div>
-
-              {verifyError && (
-                <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-2xl text-xs text-rose-300 flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-                  <span className="leading-relaxed">{verifyError}</span>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <label className="block text-xs font-semibold text-slate-300">
-                  Security Token Code
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={tokenInput}
-                    onChange={(e) => setTokenInput(e.target.value)}
-                    placeholder="e.g. rst_17277..."
-                    className="flex-1 px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-amber-300 font-mono focus:outline-hidden focus:border-amber-400"
-                  />
-                  <button
-                    onClick={() => verifyToken(tokenInput)}
-                    className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl transition cursor-pointer"
-                  >
-                    Verify
-                  </button>
-                </div>
-              </div>
-
-              {/* Quick Token Generator for instant testing */}
-              <div className="pt-3 border-t border-slate-800 space-y-2">
-                <span className="text-[11px] font-semibold text-slate-400 block">
-                  Generate instant reset token for staff account:
-                </span>
-                <div className="flex flex-wrap gap-1.5">
-                  {[
-                    { email: 'nisha@whitecollarrealty.com', name: 'Nisha (HR)' },
-                    { email: 'sameer@whitecollarrealty.com', name: 'Sameer (Admin)' },
-                    { email: 'lalit@whitecollarrealty.com', name: 'Lalit (CEO)' },
-                    { email: 'kimmi@whitecollarrealty.com', name: 'Kimmi (Co-Founder)' },
-                    { email: 'reception@whitecollarrealty.com', name: 'Reception' },
-                  ].map((u) => (
-                    <button
-                      key={u.email}
-                      disabled={creatingQuickToken}
-                      onClick={() => handleCreateQuickReset(u.email)}
-                      className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] text-slate-300 hover:text-amber-300 rounded-lg transition cursor-pointer"
-                    >
-                      {u.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="pt-2">
-                <button
-                  onClick={onBackToLogin}
-                  className="w-full py-2 bg-slate-800/80 hover:bg-slate-800 text-slate-300 text-xs rounded-xl transition"
-                >
-                  &larr; Return to Staff Login
-                </button>
-              </div>
-            </div>
           ) : (
-            /* PASSWORD RESET FORM STATE */
+            /* FORM STATE */
             <div className="space-y-4">
               {/* User Profile Banner */}
               <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-between text-xs">
@@ -333,10 +240,10 @@ export const ResetPasswordView: React.FC<ResetPasswordViewProps> = ({
                 <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl space-y-2 text-xs">
                   <div className="flex items-center gap-2 text-amber-300 font-bold text-xs">
                     <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
-                    <span>Admin Dual-Verification Mode</span>
+                    <span>Admin Approval Notice</span>
                   </div>
                   <p className="text-[11px] text-slate-300 leading-relaxed">
-                    This password reset link was requested via staff recovery. Admin (Sameer Sir) has been notified. You may set your new password below, or click instant approval.
+                    This password reset link was requested via staff recovery. Admin (Sameer Sir) has been notified. You may set your new password below, or Admin can approve directly from the Admin Console.
                   </p>
                   <button
                     type="button"
@@ -459,4 +366,3 @@ export const ResetPasswordView: React.FC<ResetPasswordViewProps> = ({
     </div>
   );
 };
-

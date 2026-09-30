@@ -11,22 +11,14 @@ import {
   Sparkles,
   ArrowRight,
 } from 'lucide-react';
-import type { Candidate, Interview, Room, User, PersonalTask, Notification } from '../../types/index.ts';
-import { PersonalScopeWidget } from '../PersonalScopeWidget.tsx';
+import type { Candidate, Interview, Room } from '../../types/index.ts';
 
 interface HRDashboardProps {
   candidates: Candidate[];
   interviews: Interview[];
   rooms: Room[];
-  currentUser?: User | null;
-  personalTasks?: PersonalTask[];
-  notifications?: Notification[];
-  onTogglePersonalTask?: (id: string) => void;
-  onAddPersonalTask?: (task: any) => void;
-  onDeletePersonalTask?: (id: string) => void;
   onOpenDossier: (candidateId: string) => void;
   onAssignRoom: (candidateId: string, interviewId?: string) => void;
-  onOpenSwitchUser?: () => void;
   onRefresh: () => void;
 }
 
@@ -34,15 +26,8 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({
   candidates,
   interviews,
   rooms,
-  currentUser,
-  personalTasks = [],
-  notifications = [],
-  onTogglePersonalTask = () => {},
-  onAddPersonalTask = () => {},
-  onDeletePersonalTask = () => {},
   onOpenDossier,
   onAssignRoom,
-  onOpenSwitchUser,
 }) => {
   const waitingCandidates = candidates.filter(
     (c) => c.status === 'ARRIVED' || c.status === 'WAITING'
@@ -52,21 +37,6 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      {/* Isolated Personal Dashboard Hub */}
-      <PersonalScopeWidget
-        currentUser={currentUser || null}
-        tasks={personalTasks}
-        candidates={candidates}
-        interviews={interviews}
-        notifications={notifications}
-        onToggleTask={onTogglePersonalTask}
-        onAddTask={onAddPersonalTask}
-        onDeleteTask={onDeletePersonalTask}
-        onOpenDossier={onOpenDossier}
-        onAssignRoom={onAssignRoom}
-        onOpenSwitchUser={onOpenSwitchUser}
-      />
-
       {/* Overview Metric Row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
         <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl">

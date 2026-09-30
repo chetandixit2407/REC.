@@ -12,18 +12,13 @@ import {
   Sparkles,
   Wifi,
   WifiOff,
-  LogOut,
-  User,
 } from 'lucide-react';
-import type { UserRole, User as UserType } from '../types/index.ts';
+import type { UserRole } from '../types/index.ts';
 import { PWAInstallButton } from './PWAInstallButton.tsx';
 
 interface NavbarProps {
   currentRole: UserRole;
-  currentUser?: UserType | null;
   onSelectRole: (role: UserRole) => void;
-  onOpenStaffSwitch?: () => void;
-  onLogout?: () => void;
   unreadCount: number;
   onOpenNotifications: () => void;
   onOpenQRPasses: () => void;
@@ -34,10 +29,7 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({
   currentRole,
-  currentUser,
   onSelectRole,
-  onOpenStaffSwitch,
-  onLogout,
   unreadCount,
   onOpenNotifications,
   onOpenQRPasses,
@@ -96,30 +88,8 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
 
-        {/* User Identity & Isolated Scope Trigger */}
-        {currentUser && (
-          <button
-            onClick={onOpenStaffSwitch}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-slate-900 border border-amber-500/40 hover:border-amber-400 transition cursor-pointer text-left shadow-sm"
-            title="Click to Switch Staff Account or View Isolated Identity"
-          >
-            <div className="w-6 h-6 rounded-lg bg-amber-500/20 text-amber-400 font-black text-xs flex items-center justify-center">
-              {currentUser.name[0]}
-            </div>
-            <div className="hidden sm:block">
-              <span className="text-xs font-bold text-white block leading-tight">
-                {currentUser.name}
-              </span>
-              <span className="text-[9px] text-amber-300 font-medium block leading-tight">
-                {currentUser.designation || currentUser.role}
-              </span>
-            </div>
-            <ChevronDown className="w-3.5 h-3.5 text-slate-400 ml-0.5" />
-          </button>
-        )}
-
         {/* Role Switcher Pill Bar */}
-        <div className="hidden xl:flex items-center bg-slate-900 border border-slate-800 rounded-2xl p-1 gap-1 overflow-x-auto max-w-full">
+        <div className="flex items-center bg-slate-900 border border-slate-800 rounded-2xl p-1 gap-1 overflow-x-auto max-w-full">
           {roles.map(({ role, label, icon: Icon, color }) => {
             const active = currentRole === role;
             return (
@@ -133,7 +103,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }`}
               >
                 <Icon className={`w-3.5 h-3.5 ${active ? 'text-slate-950' : color}`} />
-                <span>{label}</span>
+                <span className="hidden sm:inline">{label}</span>
+                <span className="sm:hidden">{role}</span>
               </button>
             );
           })}
@@ -148,7 +119,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             title="Candidate Arrival Self Check-In Form"
           >
             <UserCheck className="w-3.5 h-3.5 text-amber-400" />
-            <span>Check-In</span>
+            <span>Candidate Check-In</span>
           </button>
 
           <button
@@ -158,16 +129,6 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <QrCode className="w-3.5 h-3.5 text-amber-400" />
             <span className="hidden sm:inline">QR Station</span>
-          </button>
-
-          {/* Switch Account */}
-          <button
-            onClick={onOpenStaffSwitch}
-            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white text-xs font-semibold transition cursor-pointer"
-            title="Switch staff account"
-          >
-            <Users className="w-3.5 h-3.5 text-amber-400" />
-            <span>Accounts</span>
           </button>
 
           {/* Notification Bell */}

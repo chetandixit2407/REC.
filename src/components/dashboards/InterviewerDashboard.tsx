@@ -10,24 +10,16 @@ import {
   Sparkles,
   ArrowRight,
 } from 'lucide-react';
-import type { Candidate, Interview, Room, User, PersonalTask, Notification } from '../../types/index.ts';
-import { PersonalScopeWidget } from '../PersonalScopeWidget.tsx';
+import type { Candidate, Interview, Room } from '../../types/index.ts';
 
 interface InterviewerDashboardProps {
   candidates: Candidate[];
   interviews: Interview[];
   rooms: Room[];
   currentInterviewerId: string;
-  currentUser?: User | null;
-  personalTasks?: PersonalTask[];
-  notifications?: Notification[];
-  onTogglePersonalTask?: (id: string) => void;
-  onAddPersonalTask?: (task: any) => void;
-  onDeletePersonalTask?: (id: string) => void;
   onStartInterview: (interviewId: string) => void;
   onOpenEndInterviewModal: (interview: Interview) => void;
   onOpenDossier: (candidateId: string) => void;
-  onOpenSwitchUser?: () => void;
 }
 
 export const InterviewerDashboard: React.FC<InterviewerDashboardProps> = ({
@@ -35,27 +27,14 @@ export const InterviewerDashboard: React.FC<InterviewerDashboardProps> = ({
   interviews,
   rooms,
   currentInterviewerId,
-  currentUser,
-  personalTasks = [],
-  notifications = [],
-  onTogglePersonalTask = () => {},
-  onAddPersonalTask = () => {},
-  onDeletePersonalTask = () => {},
   onStartInterview,
   onOpenEndInterviewModal,
   onOpenDossier,
-  onOpenSwitchUser,
 }) => {
-  const userFirstName = (currentUser?.name || '').toLowerCase().split(' ')[0];
-
-  // Filter for interviews assigned to this specific interviewer
-  const myInterviews = interviews.filter((i) => {
-    if (!currentUser && !currentInterviewerId) return true;
-    if (currentUser && i.interviewerId === currentUser.id) return true;
-    if (currentInterviewerId && i.interviewerId === currentInterviewerId) return true;
-    if (userFirstName && i.interviewerName.toLowerCase().includes(userFirstName)) return true;
-    return false;
-  });
+  // Filter for interviews assigned to this interviewer
+  const myInterviews = interviews.filter(
+    (i) => !currentInterviewerId || i.interviewerId === currentInterviewerId || i.interviewerName.includes('Nisha')
+  );
 
   const waitingInterviews = myInterviews.filter(
     (i) => i.status === 'CANDIDATE_ARRIVED' || i.status === 'ROOM_ASSIGNED'
@@ -65,32 +44,17 @@ export const InterviewerDashboard: React.FC<InterviewerDashboardProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      {/* Isolated Personal Dashboard Hub */}
-      <PersonalScopeWidget
-        currentUser={currentUser || null}
-        tasks={personalTasks}
-        candidates={candidates}
-        interviews={interviews}
-        notifications={notifications}
-        onToggleTask={onTogglePersonalTask}
-        onAddTask={onAddPersonalTask}
-        onDeleteTask={onDeletePersonalTask}
-        onOpenDossier={onOpenDossier}
-        onStartInterview={onStartInterview}
-        onOpenSwitchUser={onOpenSwitchUser}
-      />
-
       {/* Top Banner */}
       <div className="p-6 bg-slate-900 border border-slate-800 rounded-3xl shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
             <UserCheck className="w-5 h-5 text-blue-400" />
             <h1 className="text-xl font-bold text-white tracking-tight">
-              {currentUser?.role === 'CO_FOUNDER' ? 'Co-Founder Leadership Interview Station' : 'Interviewer Command Station'}
+              Interviewer Command Station
             </h1>
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
-            Active logged-in interviewer: <strong className="text-amber-400">{currentUser?.name || 'Authorized Interviewer'} ({currentUser?.designation || currentUser?.role})</strong>
+            Active logged-in interviewer: <strong className="text-amber-400">Nisha Verma (Senior Director)</strong>
           </p>
         </div>
 

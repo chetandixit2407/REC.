@@ -15,7 +15,6 @@ import type {
   RoleFieldVisibility,
   CandidateChangeRequest,
   PasswordResetRequest,
-  PersonalTask,
 } from '../types/index.ts';
 import { hashPassword, ROLE_PERMISSIONS } from './auth.ts';
 
@@ -36,7 +35,6 @@ export interface DatabaseSchema {
   settings: OfficeSettings;
   changeRequests?: CandidateChangeRequest[];
   passwordResetRequests?: PasswordResetRequest[];
-  personalTasks?: PersonalTask[];
 }
 
 const defaultFieldVisibility: Record<string, RoleFieldVisibility> = {
@@ -492,8 +490,8 @@ const defaultCheckInSessions: CheckInSession[] = [
     position: 'Sales Manager - Luxury Residential',
     department: 'Sales & Business Development',
     appointmentTime: '11:00 AM',
-    interviewerId: 'usr-hr-nisha',
-    interviewerName: 'Nisha (Senior HR Manager)',
+    interviewerId: 'usr-int-1',
+    interviewerName: 'Nisha Verma',
     interviewRound: 'Round 1 - Technical Assessment',
     status: 'ACTIVE',
     expiresAt: new Date(Date.now() + 86400000).toISOString(),
@@ -508,8 +506,8 @@ const defaultCheckInSessions: CheckInSession[] = [
     position: 'Commercial Leasing Executive',
     department: 'Commercial Real Estate',
     appointmentTime: '01:30 PM',
-    interviewerId: 'usr-hr-shriyanshi',
-    interviewerName: 'Shriyanshi (HR Executive)',
+    interviewerId: 'usr-int-2',
+    interviewerName: 'Rohan Gupta',
     interviewRound: 'Round 1 - Technical Assessment',
     status: 'ACTIVE',
     expiresAt: new Date(Date.now() + 86400000).toISOString(),
@@ -522,171 +520,6 @@ const defaultCheckInSessions: CheckInSession[] = [
     status: 'ACTIVE',
     expiresAt: new Date(Date.now() + 86400000 * 30).toISOString(),
     createdAt: new Date().toISOString(),
-  },
-];
-
-const defaultPersonalTasks: PersonalTask[] = [
-  // Nisha (HR)
-  {
-    id: 'pt-nisha-1',
-    userId: 'usr-hr-nisha',
-    title: 'Conduct Round 1 Interview: Rahul Sharma',
-    description: 'Evaluate candidate on sales track record, luxury residential network, and commercial acumen.',
-    category: 'INTERVIEW',
-    status: 'PENDING',
-    priority: 'HIGH',
-    relatedCandidateId: 'cand-1',
-    relatedCandidateName: 'Rahul Sharma',
-    relatedInterviewId: 'intv-1',
-    dueDate: 'Today, 11:00 AM',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'pt-nisha-2',
-    userId: 'usr-hr-nisha',
-    title: 'Assign Interview Room for Rahul Sharma',
-    description: 'Select available meeting room or cabin once candidate check-in completes.',
-    category: 'ROOM_ALLOCATION',
-    status: 'PENDING',
-    priority: 'HIGH',
-    relatedCandidateId: 'cand-1',
-    relatedCandidateName: 'Rahul Sharma',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'pt-nisha-3',
-    userId: 'usr-hr-nisha',
-    title: 'Review Compensation Matrix for Sales Managers',
-    description: 'Ensure salary benchmarks match luxury property sales commission standards.',
-    category: 'CANDIDATE_REVIEW',
-    status: 'IN_PROGRESS',
-    priority: 'NORMAL',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  // Shriyanshi (HR)
-  {
-    id: 'pt-shriyanshi-1',
-    userId: 'usr-hr-shriyanshi',
-    title: 'Review Candidate Dossier: Sneha Kapoor',
-    description: 'Verify leasing transaction portfolio and commercial experience with JLL.',
-    category: 'CANDIDATE_REVIEW',
-    status: 'PENDING',
-    priority: 'HIGH',
-    relatedCandidateId: 'cand-2',
-    relatedCandidateName: 'Sneha Kapoor',
-    relatedInterviewId: 'intv-2',
-    dueDate: 'Today, 01:30 PM',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'pt-shriyanshi-2',
-    userId: 'usr-hr-shriyanshi',
-    title: 'HR Intake & Culture Alignment Check',
-    description: 'Conduct preliminary screening for culture fit and notice period constraints.',
-    category: 'CANDIDATE_REVIEW',
-    status: 'PENDING',
-    priority: 'NORMAL',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  // Kimmi Mam (Co-Founder)
-  {
-    id: 'pt-kimmi-1',
-    userId: 'usr-cofounder-kimmi',
-    title: 'Leadership Evaluation Round 2: Vikram Malhotra',
-    description: 'Strategic leadership assessment for Associate Vice President - Commercial Leasing role.',
-    category: 'INTERVIEW',
-    status: 'PENDING',
-    priority: 'CRITICAL',
-    relatedCandidateName: 'Vikram Malhotra',
-    dueDate: 'Today, 03:00 PM',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'pt-kimmi-2',
-    userId: 'usr-cofounder-kimmi',
-    title: 'Review Candidate Feedback from Round 1',
-    description: 'Inspect preliminary scores and notes from HR panel before conducting Round 2.',
-    category: 'CANDIDATE_REVIEW',
-    status: 'PENDING',
-    priority: 'HIGH',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  // Lalit Sir (CEO)
-  {
-    id: 'pt-lalit-1',
-    userId: 'usr-ceo-lalit',
-    title: 'Executive Approval: Senior Leadership Candidate Offers',
-    description: 'Review final compensation packages and sign off on commercial terms.',
-    category: 'ADMIN_APPROVAL',
-    status: 'PENDING',
-    priority: 'CRITICAL',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'pt-lalit-2',
-    userId: 'usr-ceo-lalit',
-    title: 'Strategic Talent Pipeline Review',
-    description: 'Assess weekly candidate throughput across Luxury Residential & Leasing verticals.',
-    category: 'FACILITY_CHECK',
-    status: 'IN_PROGRESS',
-    priority: 'NORMAL',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  // Sameer Sir (Admin)
-  {
-    id: 'pt-sameer-1',
-    userId: 'usr-admin-sameer',
-    title: 'Review Staff Security & Password Reset Approvals',
-    description: 'Verify identity for staff password reset requests and credentials overrides.',
-    category: 'ADMIN_APPROVAL',
-    status: 'PENDING',
-    priority: 'HIGH',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'pt-sameer-2',
-    userId: 'usr-admin-sameer',
-    title: 'Inspect Office Room Allocation & Sensor State',
-    description: 'Confirm 9 operational meeting rooms & cabins are calibrated.',
-    category: 'FACILITY_CHECK',
-    status: 'COMPLETED',
-    priority: 'NORMAL',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  // Reception (Ananya Sen)
-  {
-    id: 'pt-rec-1',
-    userId: 'usr-rec-ananya',
-    title: 'Front Desk Live Arrival Camera Verification',
-    description: 'Capture photo for arriving walk-in and scheduled candidates.',
-    category: 'GENERAL',
-    status: 'PENDING',
-    priority: 'HIGH',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  // Pantry (Ramesh Kumar)
-  {
-    id: 'pt-pan-1',
-    userId: 'usr-pan-ramesh',
-    title: 'Hospitality Service: The Skyline & Cabins',
-    description: 'Prepare mineral water and verify room readiness upon room allocation.',
-    category: 'FACILITY_CHECK',
-    status: 'PENDING',
-    priority: 'NORMAL',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
   },
 ];
 
@@ -758,12 +591,9 @@ class DatabaseService {
         });
         parsed.users = Array.from(userMap.values());
 
-        // 3. Ensure changeRequests, passwordResetRequests & personalTasks arrays exist
+        // 3. Ensure changeRequests & passwordResetRequests arrays exist
         parsed.changeRequests = parsed.changeRequests || [];
         parsed.passwordResetRequests = parsed.passwordResetRequests || [];
-        if (!parsed.personalTasks || parsed.personalTasks.length === 0) {
-          parsed.personalTasks = defaultPersonalTasks;
-        }
 
         // 4. Ensure field visibility has all modern fields + CO_FOUNDER
         if (!parsed.settings) parsed.settings = {};
