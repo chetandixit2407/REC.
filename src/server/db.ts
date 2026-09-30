@@ -13,7 +13,11 @@ import type {
   Visitor,
   OfficeSettings,
   RoleFieldVisibility,
+  CandidateChangeRequest,
+  PasswordResetRequest,
+  PersonalTask,
 } from '../types/index.ts';
+import { hashPassword, ROLE_PERMISSIONS } from './auth.ts';
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const DB_FILE = path.resolve(DATA_DIR, 'wcr_database.json');
@@ -30,6 +34,9 @@ export interface DatabaseSchema {
   checkInSessions: CheckInSession[];
   visitors: Visitor[];
   settings: OfficeSettings;
+  changeRequests?: CandidateChangeRequest[];
+  passwordResetRequests?: PasswordResetRequest[];
+  personalTasks?: PersonalTask[];
 }
 
 const defaultFieldVisibility: Record<string, RoleFieldVisibility> = {
@@ -65,9 +72,9 @@ const defaultFieldVisibility: Record<string, RoleFieldVisibility> = {
   },
   CEO: {
     candidateName: true,
-    phone: false,
-    email: false,
-    address: false,
+    phone: true,
+    email: true,
+    address: true,
     resume: true,
     governmentId: true,
     validationResults: true,
@@ -75,8 +82,23 @@ const defaultFieldVisibility: Record<string, RoleFieldVisibility> = {
     hrNotes: true,
     interviewStatus: true,
     room: true,
-    pantryTask: false,
-    salary: false,
+    pantryTask: true,
+    salary: true,
+  },
+  CO_FOUNDER: {
+    candidateName: true,
+    phone: true,
+    email: true,
+    address: true,
+    resume: true,
+    governmentId: true,
+    validationResults: true,
+    livePhoto: true,
+    hrNotes: true,
+    interviewStatus: true,
+    room: true,
+    pantryTask: true,
+    salary: true,
   },
   INTERVIEWER: {
     candidateName: true,
@@ -127,103 +149,254 @@ const defaultFieldVisibility: Record<string, RoleFieldVisibility> = {
 
 const defaultUsers: User[] = [
   {
-    id: 'usr-hr-1',
-    name: 'Sneha Patel',
-    email: 'sneha.patel@whitecollarrealty.com',
-    role: 'HR',
-    department: 'Human Resources',
-    phone: '+91 98765 43210',
-  },
-  {
-    id: 'usr-admin-1',
-    name: 'Vikram Malhotra',
-    email: 'vikram.admin@whitecollarrealty.com',
-    role: 'ADMIN',
-    department: 'Office Operations & Admin',
-    phone: '+91 98765 43211',
-  },
-  {
-    id: 'usr-ceo-1',
-    name: 'Rajesh Khurana',
-    email: 'rajesh.khurana@whitecollarrealty.com',
+    id: 'usr-ceo-lalit',
+    userId: 'usr-ceo-lalit',
+    name: 'Lalit Sir',
+    email: 'lalit@whitecollarrealty.com',
+    username: 'lalit.sir',
+    passwordHash: hashPassword('wcr123'),
     role: 'CEO',
+    designation: 'CEO',
     department: 'Executive Leadership',
-    phone: '+91 98765 43212',
+    permissions: ROLE_PERMISSIONS.CEO,
+    isActive: true,
+    phone: '+91 98100 00001',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   },
   {
-    id: 'usr-int-1',
-    name: 'Nisha Verma',
-    email: 'nisha.verma@whitecollarrealty.com',
-    role: 'INTERVIEWER',
-    department: 'Sales & Business Development',
-    phone: '+91 98765 43213',
+    id: 'usr-cofounder-kimmi',
+    userId: 'usr-cofounder-kimmi',
+    name: 'Kimmi Mam',
+    email: 'kimmi@whitecollarrealty.com',
+    username: 'kimmi.mam',
+    passwordHash: hashPassword('wcr123'),
+    role: 'CO_FOUNDER',
+    designation: 'CO-Founder',
+    department: 'Executive Leadership',
+    permissions: ROLE_PERMISSIONS.CO_FOUNDER,
+    isActive: true,
+    phone: '+91 98100 00002',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   },
   {
-    id: 'usr-int-2',
-    name: 'Rohan Gupta',
-    email: 'rohan.gupta@whitecollarrealty.com',
-    role: 'INTERVIEWER',
-    department: 'Commercial Real Estate',
-    phone: '+91 98765 43214',
+    id: 'usr-hr-nisha',
+    userId: 'usr-hr-nisha',
+    name: 'Nisha',
+    email: 'nisha@whitecollarrealty.com',
+    username: 'nisha.hr',
+    passwordHash: hashPassword('wcr123'),
+    role: 'HR',
+    designation: 'Senior HR Manager',
+    department: 'HR',
+    permissions: ROLE_PERMISSIONS.HR,
+    isActive: true,
+    phone: '+91 98100 00003',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   },
   {
-    id: 'usr-rec-1',
+    id: 'usr-hr-shriyanshi',
+    userId: 'usr-hr-shriyanshi',
+    name: 'Shriyanshi',
+    email: 'shriyanshi@whitecollarrealty.com',
+    username: 'shriyanshi.hr',
+    passwordHash: hashPassword('wcr123'),
+    role: 'HR',
+    designation: 'HR Executive',
+    department: 'HR',
+    permissions: ROLE_PERMISSIONS.HR,
+    isActive: true,
+    phone: '+91 98100 00004',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'usr-admin-sameer',
+    userId: 'usr-admin-sameer',
+    name: 'Sameer Sir',
+    email: 'sameer@whitecollarrealty.com',
+    username: 'sameer.admin',
+    passwordHash: hashPassword('wcr123'),
+    role: 'ADMIN',
+    designation: 'Admin',
+    department: 'Administration & Operations',
+    permissions: ROLE_PERMISSIONS.ADMIN,
+    isActive: true,
+    phone: '+91 98100 00005',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'usr-rec-ananya',
+    userId: 'usr-rec-ananya',
     name: 'Ananya Sen',
     email: 'reception@whitecollarrealty.com',
+    username: 'reception',
+    passwordHash: hashPassword('wcr123'),
     role: 'RECEPTION',
-    department: 'Front Desk Operations',
-    phone: '+91 98765 43215',
+    designation: 'Front Desk Coordinator',
+    department: 'Front Desk & Reception',
+    permissions: ROLE_PERMISSIONS.RECEPTION,
+    isActive: true,
+    phone: '+91 98100 00006',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   },
   {
-    id: 'usr-pan-1',
-    name: 'Suresh Kumar',
-    email: 'pantry.operations@whitecollarrealty.com',
+    id: 'usr-pan-ramesh',
+    userId: 'usr-pan-ramesh',
+    name: 'Ramesh Kumar',
+    email: 'pantry@whitecollarrealty.com',
+    username: 'pantry',
+    passwordHash: hashPassword('wcr123'),
     role: 'PANTRY',
+    designation: 'Hospitality & Pantry Executive',
     department: 'Pantry & Hospitality',
-    phone: '+91 98765 43216',
+    permissions: ROLE_PERMISSIONS.PANTRY,
+    isActive: true,
+    phone: '+91 98100 00007',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   },
 ];
 
 const defaultRooms: Room[] = [
   {
-    id: 'room-1',
-    name: 'Meeting Room 1',
-    type: 'STANDARD_MEETING',
-    capacity: 6,
-    floor: 'Floor 3',
+    id: 'room-lalit-cabin',
+    roomId: 'room-lalit-cabin',
+    name: 'Lalit Sir Cabin',
+    roomName: 'Lalit Sir Cabin',
+    type: 'CABIN',
+    roomType: 'CABIN',
+    capacity: 4,
+    floor: 'Floor 4 (Executive Suite)',
     status: 'AVAILABLE',
+    isActive: true,
+    preferredFor: 'CEO & High-Level Strategic Decisions',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   },
   {
-    id: 'room-2',
-    name: 'Meeting Room 2',
-    type: 'STANDARD_MEETING',
-    capacity: 6,
-    floor: 'Floor 3',
+    id: 'room-kimmi-cabin',
+    roomId: 'room-kimmi-cabin',
+    name: 'Kimmi Mam Cabin',
+    roomName: 'Kimmi Mam Cabin',
+    type: 'CABIN',
+    roomType: 'CABIN',
+    capacity: 4,
+    floor: 'Floor 4 (Executive Suite)',
     status: 'AVAILABLE',
+    isActive: true,
+    preferredFor: 'Co-Founder & Strategic Advisory',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   },
   {
-    id: 'room-3',
-    name: 'Boardroom Alpha',
-    type: 'EXECUTIVE_BOARDROOM',
-    capacity: 14,
+    id: 'room-prestige-loft',
+    roomId: 'room-prestige-loft',
+    name: 'The Prestige Loft (Waiting Area)',
+    roomName: 'The Prestige Loft (Waiting Area)',
+    type: 'WAITING_AREA',
+    roomType: 'WAITING_AREA',
+    capacity: 20,
+    floor: 'Floor 3 (Main Lobby)',
+    status: 'AVAILABLE',
+    isActive: true,
+    preferredFor: 'Candidate & VIP Guest Reception Lounge',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'room-skyline',
+    roomId: 'room-skyline',
+    name: 'The Skyline',
+    roomName: 'The Skyline',
+    type: 'MEETING_ROOM',
+    roomType: 'MEETING_ROOM',
+    capacity: 8,
+    floor: 'Floor 3',
+    status: 'AVAILABLE',
+    isActive: true,
+    preferredFor: 'Senior Leadership & Sales Panel Evaluations',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'room-community',
+    roomId: 'room-community',
+    name: 'The Community',
+    roomName: 'The Community',
+    type: 'MEETING_ROOM',
+    roomType: 'MEETING_ROOM',
+    capacity: 10,
+    floor: 'Floor 3',
+    status: 'AVAILABLE',
+    isActive: true,
+    preferredFor: 'Group Interviews & Departmental Rounds',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'room-summit',
+    roomId: 'room-summit',
+    name: 'The Summit',
+    roomName: 'The Summit',
+    type: 'MEETING_ROOM',
+    roomType: 'MEETING_ROOM',
+    capacity: 12,
     floor: 'Floor 4',
     status: 'AVAILABLE',
+    isActive: true,
+    preferredFor: 'Executive Board & Final Hiring Rounds',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   },
   {
-    id: 'room-4',
-    name: 'Interview Pod A',
-    type: 'INTERVIEW_POD',
-    capacity: 3,
+    id: 'room-wcr-air',
+    roomId: 'room-wcr-air',
+    name: 'WCR AIR',
+    roomName: 'WCR AIR',
+    type: 'MEETING_ROOM',
+    roomType: 'MEETING_ROOM',
+    capacity: 6,
     floor: 'Floor 3',
     status: 'AVAILABLE',
+    isActive: true,
+    preferredFor: 'Fast-Track Screenings & Technical Assessments',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   },
   {
-    id: 'room-5',
-    name: 'Interview Pod B',
-    type: 'INTERVIEW_POD',
-    capacity: 3,
+    id: 'room-prime-loft',
+    roomId: 'room-prime-loft',
+    name: 'Prime Loft',
+    roomName: 'Prime Loft',
+    type: 'MEETING_ROOM',
+    roomType: 'MEETING_ROOM',
+    capacity: 6,
     floor: 'Floor 3',
     status: 'AVAILABLE',
+    isActive: true,
+    preferredFor: 'HR Fitment & Initial Intake Interviews',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'room-regency',
+    roomId: 'room-regency',
+    name: 'Regency',
+    roomName: 'Regency',
+    type: 'MEETING_ROOM',
+    roomType: 'MEETING_ROOM',
+    capacity: 8,
+    floor: 'Floor 3',
+    status: 'AVAILABLE',
+    isActive: true,
+    preferredFor: 'Confidential Client & Candidate Discussions',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   },
 ];
 
@@ -319,8 +492,8 @@ const defaultCheckInSessions: CheckInSession[] = [
     position: 'Sales Manager - Luxury Residential',
     department: 'Sales & Business Development',
     appointmentTime: '11:00 AM',
-    interviewerId: 'usr-int-1',
-    interviewerName: 'Nisha Verma',
+    interviewerId: 'usr-hr-nisha',
+    interviewerName: 'Nisha (Senior HR Manager)',
     interviewRound: 'Round 1 - Technical Assessment',
     status: 'ACTIVE',
     expiresAt: new Date(Date.now() + 86400000).toISOString(),
@@ -335,8 +508,8 @@ const defaultCheckInSessions: CheckInSession[] = [
     position: 'Commercial Leasing Executive',
     department: 'Commercial Real Estate',
     appointmentTime: '01:30 PM',
-    interviewerId: 'usr-int-2',
-    interviewerName: 'Rohan Gupta',
+    interviewerId: 'usr-hr-shriyanshi',
+    interviewerName: 'Shriyanshi (HR Executive)',
     interviewRound: 'Round 1 - Technical Assessment',
     status: 'ACTIVE',
     expiresAt: new Date(Date.now() + 86400000).toISOString(),
@@ -349,6 +522,171 @@ const defaultCheckInSessions: CheckInSession[] = [
     status: 'ACTIVE',
     expiresAt: new Date(Date.now() + 86400000 * 30).toISOString(),
     createdAt: new Date().toISOString(),
+  },
+];
+
+const defaultPersonalTasks: PersonalTask[] = [
+  // Nisha (HR)
+  {
+    id: 'pt-nisha-1',
+    userId: 'usr-hr-nisha',
+    title: 'Conduct Round 1 Interview: Rahul Sharma',
+    description: 'Evaluate candidate on sales track record, luxury residential network, and commercial acumen.',
+    category: 'INTERVIEW',
+    status: 'PENDING',
+    priority: 'HIGH',
+    relatedCandidateId: 'cand-1',
+    relatedCandidateName: 'Rahul Sharma',
+    relatedInterviewId: 'intv-1',
+    dueDate: 'Today, 11:00 AM',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'pt-nisha-2',
+    userId: 'usr-hr-nisha',
+    title: 'Assign Interview Room for Rahul Sharma',
+    description: 'Select available meeting room or cabin once candidate check-in completes.',
+    category: 'ROOM_ALLOCATION',
+    status: 'PENDING',
+    priority: 'HIGH',
+    relatedCandidateId: 'cand-1',
+    relatedCandidateName: 'Rahul Sharma',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'pt-nisha-3',
+    userId: 'usr-hr-nisha',
+    title: 'Review Compensation Matrix for Sales Managers',
+    description: 'Ensure salary benchmarks match luxury property sales commission standards.',
+    category: 'CANDIDATE_REVIEW',
+    status: 'IN_PROGRESS',
+    priority: 'NORMAL',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  // Shriyanshi (HR)
+  {
+    id: 'pt-shriyanshi-1',
+    userId: 'usr-hr-shriyanshi',
+    title: 'Review Candidate Dossier: Sneha Kapoor',
+    description: 'Verify leasing transaction portfolio and commercial experience with JLL.',
+    category: 'CANDIDATE_REVIEW',
+    status: 'PENDING',
+    priority: 'HIGH',
+    relatedCandidateId: 'cand-2',
+    relatedCandidateName: 'Sneha Kapoor',
+    relatedInterviewId: 'intv-2',
+    dueDate: 'Today, 01:30 PM',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'pt-shriyanshi-2',
+    userId: 'usr-hr-shriyanshi',
+    title: 'HR Intake & Culture Alignment Check',
+    description: 'Conduct preliminary screening for culture fit and notice period constraints.',
+    category: 'CANDIDATE_REVIEW',
+    status: 'PENDING',
+    priority: 'NORMAL',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  // Kimmi Mam (Co-Founder)
+  {
+    id: 'pt-kimmi-1',
+    userId: 'usr-cofounder-kimmi',
+    title: 'Leadership Evaluation Round 2: Vikram Malhotra',
+    description: 'Strategic leadership assessment for Associate Vice President - Commercial Leasing role.',
+    category: 'INTERVIEW',
+    status: 'PENDING',
+    priority: 'CRITICAL',
+    relatedCandidateName: 'Vikram Malhotra',
+    dueDate: 'Today, 03:00 PM',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'pt-kimmi-2',
+    userId: 'usr-cofounder-kimmi',
+    title: 'Review Candidate Feedback from Round 1',
+    description: 'Inspect preliminary scores and notes from HR panel before conducting Round 2.',
+    category: 'CANDIDATE_REVIEW',
+    status: 'PENDING',
+    priority: 'HIGH',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  // Lalit Sir (CEO)
+  {
+    id: 'pt-lalit-1',
+    userId: 'usr-ceo-lalit',
+    title: 'Executive Approval: Senior Leadership Candidate Offers',
+    description: 'Review final compensation packages and sign off on commercial terms.',
+    category: 'ADMIN_APPROVAL',
+    status: 'PENDING',
+    priority: 'CRITICAL',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'pt-lalit-2',
+    userId: 'usr-ceo-lalit',
+    title: 'Strategic Talent Pipeline Review',
+    description: 'Assess weekly candidate throughput across Luxury Residential & Leasing verticals.',
+    category: 'FACILITY_CHECK',
+    status: 'IN_PROGRESS',
+    priority: 'NORMAL',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  // Sameer Sir (Admin)
+  {
+    id: 'pt-sameer-1',
+    userId: 'usr-admin-sameer',
+    title: 'Review Staff Security & Password Reset Approvals',
+    description: 'Verify identity for staff password reset requests and credentials overrides.',
+    category: 'ADMIN_APPROVAL',
+    status: 'PENDING',
+    priority: 'HIGH',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'pt-sameer-2',
+    userId: 'usr-admin-sameer',
+    title: 'Inspect Office Room Allocation & Sensor State',
+    description: 'Confirm 9 operational meeting rooms & cabins are calibrated.',
+    category: 'FACILITY_CHECK',
+    status: 'COMPLETED',
+    priority: 'NORMAL',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  // Reception (Ananya Sen)
+  {
+    id: 'pt-rec-1',
+    userId: 'usr-rec-ananya',
+    title: 'Front Desk Live Arrival Camera Verification',
+    description: 'Capture photo for arriving walk-in and scheduled candidates.',
+    category: 'GENERAL',
+    status: 'PENDING',
+    priority: 'HIGH',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  // Pantry (Ramesh Kumar)
+  {
+    id: 'pt-pan-1',
+    userId: 'usr-pan-ramesh',
+    title: 'Hospitality Service: The Skyline & Cabins',
+    description: 'Prepare mineral water and verify room readiness upon room allocation.',
+    category: 'FACILITY_CHECK',
+    status: 'PENDING',
+    priority: 'NORMAL',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   },
 ];
 
@@ -368,11 +706,71 @@ class DatabaseService {
       try {
         const raw = fs.readFileSync(DB_FILE, 'utf-8');
         const parsed = JSON.parse(raw);
-        // Ensure field visibility has all modern fields
+
+        // 1. Replace existing room names with the 9 exact required rooms
+        const existingRoomNames = new Set((parsed.rooms || []).map((r: any) => r.name));
+        const requiredNames = [
+          'Lalit Sir Cabin',
+          'Kimmi Mam Cabin',
+          'The Prestige Loft (Waiting Area)',
+          'The Skyline',
+          'The Community',
+          'The Summit',
+          'WCR AIR',
+          'Prime Loft',
+          'Regency',
+        ];
+        const hasAllRooms = requiredNames.every((n) => existingRoomNames.has(n));
+
+        if (!hasAllRooms || !parsed.rooms || parsed.rooms.length < 9) {
+          const currentOccupied = (parsed.rooms || []).filter(
+            (r: any) => r.status === 'OCCUPIED' || r.status === 'ASSIGNED'
+          );
+          parsed.rooms = defaultRooms.map((dr, idx) => {
+            if (currentOccupied[idx]) {
+              return {
+                ...dr,
+                status: currentOccupied[idx].status,
+                currentCandidateId: currentOccupied[idx].currentCandidateId,
+                currentCandidateName: currentOccupied[idx].currentCandidateName,
+                currentInterviewId: currentOccupied[idx].currentInterviewId,
+              };
+            }
+            return { ...dr };
+          });
+        }
+
+        // 2. Ensure individual accounts for Lalit Sir, Kimmi Mam, Nisha, Shriyanshi, Sameer Sir, Reception, Pantry
+        const userMap = new Map<string, any>((parsed.users || []).map((u: any) => [u.email, u]));
+        defaultUsers.forEach((du) => {
+          if (!userMap.has(du.email)) {
+            userMap.set(du.email, du);
+          } else {
+            const existing: any = userMap.get(du.email);
+            existing.passwordHash = existing.passwordHash || du.passwordHash;
+            existing.role = du.role;
+            existing.name = du.name;
+            existing.designation = du.designation || existing.designation;
+            existing.department = du.department || existing.department;
+            existing.permissions = du.permissions || existing.permissions;
+            existing.isActive = existing.isActive !== undefined ? existing.isActive : true;
+          }
+        });
+        parsed.users = Array.from(userMap.values());
+
+        // 3. Ensure changeRequests, passwordResetRequests & personalTasks arrays exist
+        parsed.changeRequests = parsed.changeRequests || [];
+        parsed.passwordResetRequests = parsed.passwordResetRequests || [];
+        if (!parsed.personalTasks || parsed.personalTasks.length === 0) {
+          parsed.personalTasks = defaultPersonalTasks;
+        }
+
+        // 4. Ensure field visibility has all modern fields + CO_FOUNDER
         if (!parsed.settings) parsed.settings = {};
         parsed.settings.fieldVisibility = {
           ...defaultFieldVisibility,
           ...(parsed.settings.fieldVisibility || {}),
+          CO_FOUNDER: defaultFieldVisibility.CO_FOUNDER,
           RECEPTION: {
             ...defaultFieldVisibility.RECEPTION,
             ...(parsed.settings.fieldVisibility?.RECEPTION || {}),
@@ -390,6 +788,8 @@ class DatabaseService {
             hrNotes: false,
           },
         };
+
+        this.persist(parsed);
         return parsed;
       } catch (err) {
         console.error('Failed to parse database file, resetting to defaults', err);

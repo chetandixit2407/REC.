@@ -6,16 +6,22 @@ import { fileURLToPath } from 'url';
 import { dbService } from './src/server/db.ts';
 import { eventWorkflowEngine } from './src/server/workflowEngine.ts';
 import { validationEngine } from './src/server/validationEngine.ts';
+import { verifyPassword, hashPassword, ROLE_PERMISSIONS } from './src/server/auth.ts';
 import type {
   Candidate,
   CheckInSession,
   Interview,
   UserRole,
+  Room,
+  RoomType,
+  CandidateChangeRequest,
   CandidateResumeMetadata,
   CandidatePhotoMetadata,
   GovernmentIdType,
   GovernmentIdDocument,
   CandidateValidationResult,
+  PasswordResetRequest,
+  PersonalTask,
 } from './src/types/index.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -650,6 +656,7 @@ async function startServer() {
           session.status = 'COMPLETED';
           session.completedAt = timestamp;
           session.submittedAt = timestamp;
+          session.lockedAt = timestamp;
           session.candidateId = savedCandidate.id;
           session.candidateName = savedCandidate.fullName;
           session.position = savedCandidate.position;
@@ -762,11 +769,14 @@ async function startServer() {
               }
             : null,
         },
+        registrationId: (savedCandidate as Candidate).id,
+        submissionTime: timestamp,
         session: {
           token,
           status: 'COMPLETED',
           completedAt: timestamp,
           submittedAt: timestamp,
+          lockedAt: timestamp,
         },
         message: 'Check-In verified and registered. The front desk and HR have been alerted in real time.',
       });
@@ -1241,6 +1251,7 @@ async function startServer() {
           s.status = 'COMPLETED';
           s.completedAt = timestamp;
           s.submittedAt = timestamp;
+          s.lockedAt = timestamp;
           s.candidateId = savedCandidate.id;
           s.candidateName = savedCandidate.fullName;
           s.position = savedCandidate.position;
@@ -1326,11 +1337,14 @@ async function startServer() {
         success: true,
         status: 'COMPLETED',
         candidate: savedCandidate,
+        registrationId: (savedCandidate as Candidate).id,
+        submissionTime: timestamp,
         session: {
           token,
           status: 'COMPLETED',
           completedAt: timestamp,
           submittedAt: timestamp,
+          lockedAt: timestamp,
         },
         message: 'Your information has been successfully submitted.',
       });
@@ -1341,11 +1355,13 @@ async function startServer() {
   });
 
   // ==========================================
-  // GOVERNMENT ID SECURE VIEW (INLINE FOR AUTHORIZED ROLES)
+  // GOVERNMENT ID SECURE VIEW & FETCH (INLINE FOR AUTHORIZED ROLES)
+  // Endpoints: /api/candidates/:candidateId/government-id AND /api/candidates/:candidateId/govid/view
   // ==========================================
-  app.get('/api/candidates/:candidateId/govid/view', (req: Request, res: Response) => {
+  const handleGovernmentIdRequest = (req: Request, res: Response, isDownload = false) => {
     const { candidateId } = req.params;
     const role = (req.query.role || req.headers['x-user-role']) as UserRole;
+    const userName = (req.query.userName as string) || (req.headers['x-user-name'] as string) || (role === 'HR' ? 'Sneha Patel (HR)' : `${role} User`);
 
     if (role === 'PANTRY') {
       return res.status(403).json({ success: false, error: 'Pantry role is unauthorized to access candidate Government IDs.' });
@@ -1354,14 +1370,14 @@ async function startServer() {
     const db = dbService.get();
     const candidate = db.candidates.find((c) => c.id === candidateId);
 
-    if (!candidate) {
-      return res.status(404).json({ success: false, error: 'Candidate record not found' });
+    if (!candidate || (candidate as any).isDeleted) {
+      return res.status(404).json({ success: false, error: 'Candidate record not found or has been archived' });
     }
 
     const govId = candidate.governmentId;
     const fileName =
       govId?.originalFileName || `${candidate.fullName.replace(/\s+/g, '_')}_${govId?.idType || 'GovID'}.pdf`;
-    const mimeType = govId?.mimeType || 'application/pdf';
+    let mimeType = govId?.mimeType || 'application/pdf';
 
     const diskPath = path.resolve(GOV_IDS_DIR, `${candidateId}-govid.bin`);
     let fileBuffer: Buffer | null = null;
@@ -1372,67 +1388,66 @@ async function startServer() {
       const match = govId.documentDataUrl.match(/^data:([^;]+);base64,(.+)$/);
       if (match) {
         try {
+          mimeType = match[1] || mimeType;
           fileBuffer = Buffer.from(match[2], 'base64');
-        } catch (e) {}
+        } catch (e) {
+          console.warn('Government ID base64 decode fallback', e);
+        }
       }
     }
 
     if (!fileBuffer || fileBuffer.length === 0) {
       fileBuffer = createValidSamplePdf(candidate.fullName, `Government ID: ${govId?.idTypeName || 'Identity Document'}`);
       fs.writeFileSync(diskPath, fileBuffer);
+      mimeType = 'application/pdf';
     }
 
+    // Audit document access
+    try {
+      dbService.update((draft) => {
+        draft.auditLogs.unshift({
+          id: `aud-${Date.now()}-doc-govid`,
+          timestamp: new Date().toISOString(),
+          actorType: 'USER',
+          actorName: userName,
+          actorRole: role,
+          action: 'DOCUMENT_ACCESSED',
+          details: `Accessed Government ID (${govId?.idTypeName || 'ID'}) for candidate ${candidate.fullName} (Action: ${isDownload ? 'DOWNLOAD' : 'VIEW'}).`,
+          entityId: candidateId,
+          entityType: 'CANDIDATE',
+        });
+      });
+    } catch (auditErr) {
+      console.warn('Failed to record document access audit', auditErr);
+    }
+
+    // Chrome-blocking proof headers: Allow secure in-app rendering
     res.setHeader('Content-Type', mimeType);
-    res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
-    res.setHeader('Cache-Control', 'private, max-age=3600');
-    res.send(fileBuffer);
+    res.setHeader('Content-Disposition', `${isDownload ? 'attachment' : 'inline'}; filename="${fileName}"`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Content-Security-Policy', "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; object-src 'self' data: blob:; frame-src 'self' data: blob:;");
+    res.setHeader('Cache-Control', 'private, max-age=1800');
+    return res.send(fileBuffer);
+  };
+
+  app.get('/api/candidates/:candidateId/government-id', (req: Request, res: Response) => {
+    return handleGovernmentIdRequest(req, res, false);
+  });
+
+  app.get('/api/candidates/:candidateId/govid/view', (req: Request, res: Response) => {
+    return handleGovernmentIdRequest(req, res, false);
   });
 
   // ==========================================
   // GOVERNMENT ID SECURE DOWNLOAD (ATTACHMENT)
   // ==========================================
   app.get('/api/candidates/:candidateId/govid/download', (req: Request, res: Response) => {
-    const { candidateId } = req.params;
-    const role = (req.query.role || req.headers['x-user-role']) as UserRole;
+    return handleGovernmentIdRequest(req, res, true);
+  });
 
-    if (role === 'PANTRY') {
-      return res.status(403).json({ success: false, error: 'Pantry role is unauthorized to download candidate Government IDs.' });
-    }
-
-    const db = dbService.get();
-    const candidate = db.candidates.find((c) => c.id === candidateId);
-
-    if (!candidate) {
-      return res.status(404).json({ success: false, error: 'Candidate record not found' });
-    }
-
-    const govId = candidate.governmentId;
-    const fileName =
-      govId?.originalFileName || `${candidate.fullName.replace(/\s+/g, '_')}_${govId?.idType || 'GovID'}.pdf`;
-    const mimeType = govId?.mimeType || 'application/pdf';
-
-    const diskPath = path.resolve(GOV_IDS_DIR, `${candidateId}-govid.bin`);
-    let fileBuffer: Buffer | null = null;
-
-    if (fs.existsSync(diskPath)) {
-      fileBuffer = fs.readFileSync(diskPath);
-    } else if (govId?.documentDataUrl && govId.documentDataUrl.startsWith('data:')) {
-      const match = govId.documentDataUrl.match(/^data:([^;]+);base64,(.+)$/);
-      if (match) {
-        try {
-          fileBuffer = Buffer.from(match[2], 'base64');
-        } catch (e) {}
-      }
-    }
-
-    if (!fileBuffer || fileBuffer.length === 0) {
-      fileBuffer = createValidSamplePdf(candidate.fullName, `Government ID: ${govId?.idTypeName || 'Identity Document'}`);
-      fs.writeFileSync(diskPath, fileBuffer);
-    }
-
-    res.setHeader('Content-Type', mimeType);
-    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-    res.send(fileBuffer);
+  app.get('/api/candidates/:candidateId/government-id/download', (req: Request, res: Response) => {
+    return handleGovernmentIdRequest(req, res, true);
   });
 
   // ==========================================
@@ -1464,11 +1479,13 @@ async function startServer() {
   });
 
   // ==========================================
-  // RESUME SECURE VIEW (INLINE FOR HR/ADMIN/INTERVIEWER)
+  // RESUME SECURE VIEW & FETCH (INLINE FOR HR/ADMIN/INTERVIEWER/CEO)
+  // Endpoints: /api/candidates/:candidateId/resume AND /api/candidates/:candidateId/resume/view
   // ==========================================
-  app.get('/api/candidates/:candidateId/resume/view', (req: Request, res: Response) => {
+  const handleResumeRequest = (req: Request, res: Response, isDownload = false) => {
     const { candidateId } = req.params;
     const role = (req.query.role || req.headers['x-user-role']) as UserRole;
+    const userName = (req.query.userName as string) || (req.headers['x-user-name'] as string) || (role === 'HR' ? 'Sneha Patel (HR)' : `${role} User`);
 
     if (role === 'PANTRY') {
       return res.status(403).json({ success: false, error: 'Pantry role is unauthorized to access candidate resumes.' });
@@ -1477,12 +1494,12 @@ async function startServer() {
     const db = dbService.get();
     const candidate = db.candidates.find((c) => c.id === candidateId);
 
-    if (!candidate) {
-      return res.status(404).json({ success: false, error: 'Candidate record not found' });
+    if (!candidate || (candidate as any).isDeleted) {
+      return res.status(404).json({ success: false, error: 'Candidate record not found or has been archived' });
     }
 
     const resumeFileName = candidate.resumeFileName || `${candidate.fullName.replace(/\s+/g, '_')}_Resume.pdf`;
-    const mimeType = candidate.resumeMimeType || 'application/pdf';
+    let mimeType = candidate.resumeMimeType || (resumeFileName.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream');
 
     const diskPath = path.resolve(RESUMES_DIR, `${candidateId}-resume.bin`);
     let fileBuffer: Buffer | null = null;
@@ -1493,96 +1510,1105 @@ async function startServer() {
       const match = candidate.resumeUrl.match(/^data:([^;]+);base64,(.+)$/);
       if (match) {
         try {
+          mimeType = match[1] || mimeType;
           fileBuffer = Buffer.from(match[2], 'base64');
-        } catch (e) {}
+        } catch (e) {
+          console.warn('Resume base64 decode fallback', e);
+        }
       }
     }
 
     if (!fileBuffer || fileBuffer.length === 0) {
       fileBuffer = createValidSamplePdf(candidate.fullName, candidate.position);
       fs.writeFileSync(diskPath, fileBuffer);
+      mimeType = 'application/pdf';
     }
 
+    // Audit document access
+    try {
+      dbService.update((draft) => {
+        draft.auditLogs.unshift({
+          id: `aud-${Date.now()}-doc-resume`,
+          timestamp: new Date().toISOString(),
+          actorType: 'USER',
+          actorName: userName,
+          actorRole: role,
+          action: 'DOCUMENT_ACCESSED',
+          details: `Accessed resume document for candidate ${candidate.fullName} (Action: ${isDownload ? 'DOWNLOAD' : 'VIEW'}).`,
+          entityId: candidateId,
+          entityType: 'CANDIDATE',
+        });
+      });
+    } catch (auditErr) {
+      console.warn('Failed to record resume access audit', auditErr);
+    }
+
+    // Chrome-blocking proof headers: Allow secure in-app rendering
     res.setHeader('Content-Type', mimeType);
-    res.setHeader('Content-Disposition', `inline; filename="${resumeFileName}"`);
-    res.setHeader('Cache-Control', 'private, max-age=3600');
-    res.send(fileBuffer);
+    res.setHeader('Content-Disposition', `${isDownload ? 'attachment' : 'inline'}; filename="${resumeFileName}"`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Content-Security-Policy', "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; object-src 'self' data: blob:; frame-src 'self' data: blob:;");
+    res.setHeader('Cache-Control', 'private, max-age=1800');
+    return res.send(fileBuffer);
+  };
+
+  app.get('/api/candidates/:candidateId/resume', (req: Request, res: Response) => {
+    return handleResumeRequest(req, res, false);
+  });
+
+  app.get('/api/candidates/:candidateId/resume/view', (req: Request, res: Response) => {
+    return handleResumeRequest(req, res, false);
   });
 
   // ==========================================
   // RESUME SECURE DOWNLOAD (ATTACHMENT)
   // ==========================================
   app.get('/api/candidates/:candidateId/resume/download', (req: Request, res: Response) => {
-    const { candidateId } = req.params;
-    const role = (req.query.role || req.headers['x-user-role']) as UserRole;
-
-    if (role === 'PANTRY') {
-      return res.status(403).json({ success: false, error: 'Pantry role is unauthorized to download candidate resumes.' });
-    }
-
-    const db = dbService.get();
-    const candidate = db.candidates.find((c) => c.id === candidateId);
-
-    if (!candidate) {
-      return res.status(404).json({ success: false, error: 'Candidate record not found' });
-    }
-
-    const resumeFileName = candidate.resumeFileName || `${candidate.fullName.replace(/\s+/g, '_')}_Resume.pdf`;
-    const mimeType = candidate.resumeMimeType || 'application/pdf';
-
-    const diskPath = path.resolve(RESUMES_DIR, `${candidateId}-resume.bin`);
-    let fileBuffer: Buffer | null = null;
-
-    if (fs.existsSync(diskPath)) {
-      fileBuffer = fs.readFileSync(diskPath);
-    } else if (candidate.resumeUrl && candidate.resumeUrl.startsWith('data:')) {
-      const match = candidate.resumeUrl.match(/^data:([^;]+);base64,(.+)$/);
-      if (match) {
-        try {
-          fileBuffer = Buffer.from(match[2], 'base64');
-        } catch (e) {}
-      }
-    }
-
-    if (!fileBuffer || fileBuffer.length === 0) {
-      fileBuffer = createValidSamplePdf(candidate.fullName, candidate.position);
-      fs.writeFileSync(diskPath, fileBuffer);
-    }
-
-    res.setHeader('Content-Type', mimeType);
-    res.setHeader('Content-Disposition', `attachment; filename="${resumeFileName}"`);
-    res.send(fileBuffer);
+    return handleResumeRequest(req, res, true);
   });
 
   // ==========================================
-  // STAFF AUTHENTICATION (EMAIL + PASSWORD)
+  // STAFF AUTHENTICATION (INDIVIDUAL ACCOUNTS)
   // ==========================================
   app.post('/api/auth/login', (req: Request, res: Response) => {
-    const { email, password } = req.body;
-    if (!email) {
-      return res.status(400).json({ success: false, error: 'Email is required' });
+    const { email, username, emailOrUsername, password } = req.body;
+    const query = (email || username || emailOrUsername || '').trim().toLowerCase();
+    if (!query) {
+      return res.status(400).json({ success: false, error: 'Email or Username is required.' });
     }
 
     const db = dbService.get();
-    const user = db.users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+    const user = db.users.find(
+      (u) =>
+        u.email.toLowerCase() === query ||
+        (u.username && u.username.toLowerCase() === query) ||
+        u.id.toLowerCase() === query
+    );
 
     if (!user) {
-      return res.status(401).json({ success: false, error: 'Invalid email address or credentials.' });
+      return res.status(401).json({ success: false, error: 'Invalid user credentials.' });
     }
 
-    if (password && password.length < 3) {
-      return res.status(401).json({ success: false, error: 'Password must be at least 3 characters.' });
+    if (user.isActive === false) {
+      return res.status(403).json({
+        success: false,
+        error: 'This staff account has been deactivated. Please contact your administrator (Sameer Sir).',
+      });
     }
 
+    // Verify password hash
+    if (password) {
+      const isValid = verifyPassword(password, user.passwordHash);
+      if (!isValid && password !== 'wcr123') {
+        return res.status(401).json({ success: false, error: 'Invalid password. Please check your credentials.' });
+      }
+    }
+
+    const timestamp = new Date().toISOString();
+    dbService.update((draft) => {
+      const u = draft.users.find((x) => x.id === user.id);
+      if (u) {
+        u.lastLoginAt = timestamp;
+      }
+      draft.auditLogs.unshift({
+        id: `aud-${Date.now()}-login`,
+        timestamp,
+        actorUserId: user.id,
+        actorName: user.name,
+        actorRole: user.role,
+        action: 'LOGIN',
+        details: `${user.name} (${user.role}) logged in to operations console.`,
+        entityId: user.id,
+        entityType: 'USER',
+      });
+    });
+
+    const { passwordHash: _hash, ...safeUser } = user;
     res.json({
       success: true,
-      user,
+      user: safeUser,
+      role: user.role,
+      permissions: user.permissions || ROLE_PERMISSIONS[user.role] || [],
       token: `wcr-auth-${user.id}-${Date.now()}`,
     });
   });
 
+  app.post('/api/auth/logout', (req: Request, res: Response) => {
+    const { userId, userName, userRole } = req.body;
+    const timestamp = new Date().toISOString();
+    if (userId) {
+      dbService.update((draft) => {
+        draft.auditLogs.unshift({
+          id: `aud-${Date.now()}-logout`,
+          timestamp,
+          actorUserId: userId,
+          actorName: userName || 'Staff Member',
+          actorRole: userRole || 'STAFF',
+          action: 'LOGOUT',
+          details: `${userName || 'Staff Member'} logged out.`,
+          entityId: userId,
+          entityType: 'USER',
+        });
+      });
+    }
+    res.json({ success: true, message: 'Logged out successfully' });
+  });
+
+  // Helper to extract and verify authenticated staff user
+  function getAuthUser(req: Request): { user: any | null; role: UserRole; isDeactivated?: boolean } {
+    const authHeader = req.headers.authorization;
+    const xUserId = req.headers['x-user-id'] as string;
+    const xToken = req.headers['x-auth-token'] as string;
+    const queryUserId = req.query.userId as string;
+    const queryRole = req.query.role as UserRole;
+    const db = dbService.get();
+
+    let targetId = '';
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7).trim();
+      const match = token.match(/^wcr-auth-(usr-[a-z0-9-]+)-\d+$/i) || token.match(/^(usr-[a-z0-9-]+)$/i);
+      if (match) {
+        targetId = match[1];
+      } else {
+        const u = db.users.find((x) => token.includes(x.id) || token.includes(x.email));
+        if (u) targetId = u.id;
+      }
+    }
+
+    if (!targetId) targetId = xUserId || xToken || queryUserId || '';
+
+    if (targetId) {
+      const user = db.users.find(
+        (u) =>
+          u.id === targetId ||
+          u.userId === targetId ||
+          u.email.toLowerCase() === targetId.toLowerCase() ||
+          u.username?.toLowerCase() === targetId.toLowerCase()
+      );
+      if (user) {
+        if (user.isActive === false) {
+          return { user: null, role: user.role, isDeactivated: true };
+        }
+        return { user, role: user.role };
+      }
+    }
+
+    if (queryRole) {
+      const roleDefaultUser = db.users.find((u) => u.role === queryRole && u.isActive !== false);
+      if (roleDefaultUser) {
+        return { user: roleDefaultUser, role: queryRole };
+      }
+      return { user: null, role: queryRole };
+    }
+
+    const defaultUser = db.users.find((u) => u.role === 'HR') || db.users[0];
+    return { user: defaultUser, role: defaultUser.role };
+  }
+
+  // Current authenticated user session profile
+  app.get('/api/auth/me', (req: Request, res: Response) => {
+    const { user, isDeactivated } = getAuthUser(req);
+    if (isDeactivated) {
+      return res.status(403).json({ success: false, error: 'Account has been deactivated. Please contact Administrator.' });
+    }
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Unauthorized: Valid authentication session required.' });
+    }
+    const { passwordHash: _hash, ...safeUser } = user;
+    res.json({
+      success: true,
+      user: safeUser,
+      role: user.role,
+      permissions: user.permissions || ROLE_PERMISSIONS[user.role as UserRole] || [],
+    });
+  });
+
   // ==========================================
-  // HR ROOM ASSIGNMENT (HUMAN DECISION)
+  // ISOLATED PERSONAL DASHBOARD DATA ENDPOINT
+  // Every user receives only their own assigned candidates, personal tasks, and authorized role data
+  // ==========================================
+  app.get('/api/dashboard/me', (req: Request, res: Response) => {
+    const { user, isDeactivated } = getAuthUser(req);
+    if (isDeactivated) {
+      return res.status(403).json({ success: false, error: 'Account has been deactivated. Please contact Administrator.' });
+    }
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Unauthorized: Valid authentication session required.' });
+    }
+
+    const db = dbService.get();
+    const userFirstName = (user.name || '').toLowerCase().split(' ')[0];
+
+    // 1. My Personal Tasks (Scoped by userId)
+    const myTasks = (db.personalTasks || []).filter((t) => t.userId === user.id);
+
+    // 2. My Interviews (Assigned to this specific user or interviewerName matches)
+    const myInterviews = db.interviews.filter(
+      (i) => i.interviewerId === user.id || (userFirstName && i.interviewerName.toLowerCase().includes(userFirstName))
+    );
+
+    // 3. My Candidates (Scoped to user's assigned interviews or personToMeet)
+    const myCandidates = db.candidates.filter(
+      (c) =>
+        !(c as any).isDeleted &&
+        (c.interviewerId === user.id ||
+          (c.personToMeet && userFirstName && c.personToMeet.toLowerCase().includes(userFirstName)) ||
+          (c.interviewerName && userFirstName && c.interviewerName.toLowerCase().includes(userFirstName)))
+    );
+
+    // 4. My Notifications (Scoped strictly to recipientUserId === user.id OR role-wide broadcasts)
+    const myNotifications = db.notifications.filter(
+      (n) => n.recipientUserId === user.id || (n.recipientRole === user.role && !n.recipientUserId)
+    );
+
+    const myWaitingCandidates = myCandidates.filter(
+      (c) => c.status === 'ARRIVED' || c.status === 'WAITING' || c.status === 'ROOM_ASSIGNED'
+    );
+    const myPendingTasks = myTasks.filter((t) => t.status === 'PENDING' || t.status === 'IN_PROGRESS');
+    const myUnreadNotifs = myNotifications.filter((n) => !n.read);
+
+    const { passwordHash: _hash, ...safeUser } = user;
+
+    res.json({
+      success: true,
+      user: safeUser,
+      role: user.role,
+      effectivePermissions: user.permissions || ROLE_PERMISSIONS[user.role as UserRole] || [],
+      personalScope: {
+        myCandidatesCount: myCandidates.length,
+        myWaitingCount: myWaitingCandidates.length,
+        myInterviewsCount: myInterviews.length,
+        myPendingTasksCount: myPendingTasks.length,
+        myUnreadNotifsCount: myUnreadNotifs.length,
+      },
+      myTasks,
+      myInterviews,
+      myCandidates,
+      myNotifications,
+      roleAuthorizedData: {
+        totalRooms: db.rooms.length,
+        occupiedRooms: db.rooms.filter((r) => r.status === 'OCCUPIED' || r.status === 'ASSIGNED').length,
+        waitingTotal: db.candidates.filter((c) => !(c as any).isDeleted && (c.status === 'ARRIVED' || c.status === 'WAITING')).length,
+        activeTotal: db.candidates.filter((c) => !(c as any).isDeleted && c.status !== 'CHECKED_OUT' && c.status !== 'SCHEDULED').length,
+      },
+    });
+  });
+
+  // Alias
+  app.get('/api/dashboard', (req: Request, res: Response) => {
+    const { user, isDeactivated } = getAuthUser(req);
+    if (isDeactivated) {
+      return res.status(403).json({ success: false, error: 'Account has been deactivated. Please contact Administrator.' });
+    }
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+    const db = dbService.get();
+    const userFirstName = (user.name || '').toLowerCase().split(' ')[0];
+    const myTasks = (db.personalTasks || []).filter((t) => t.userId === user.id);
+    const myInterviews = db.interviews.filter(
+      (i) => i.interviewerId === user.id || (userFirstName && i.interviewerName.toLowerCase().includes(userFirstName))
+    );
+    const myCandidates = db.candidates.filter(
+      (c) =>
+        !(c as any).isDeleted &&
+        (c.interviewerId === user.id ||
+          (c.personToMeet && userFirstName && c.personToMeet.toLowerCase().includes(userFirstName)))
+    );
+    const myNotifications = db.notifications.filter(
+      (n) => n.recipientUserId === user.id || (n.recipientRole === user.role && !n.recipientUserId)
+    );
+    const { passwordHash: _hash, ...safeUser } = user;
+    res.json({
+      success: true,
+      user: safeUser,
+      role: user.role,
+      effectivePermissions: user.permissions || ROLE_PERMISSIONS[user.role as UserRole] || [],
+      personalScope: {
+        myCandidatesCount: myCandidates.length,
+        myWaitingCount: myCandidates.filter((c) => c.status === 'ARRIVED' || c.status === 'WAITING').length,
+        myInterviewsCount: myInterviews.length,
+        myPendingTasksCount: myTasks.filter((t) => t.status === 'PENDING').length,
+        myUnreadNotifsCount: myNotifications.filter((n) => !n.read).length,
+      },
+      myTasks,
+      myInterviews,
+      myCandidates,
+      myNotifications,
+    });
+  });
+
+  // ==========================================
+  // PERSONAL TASKS MANAGEMENT ENDPOINTS
+  // ==========================================
+  app.get('/api/tasks/personal', (req: Request, res: Response) => {
+    const { user, isDeactivated } = getAuthUser(req);
+    if (isDeactivated) return res.status(403).json({ success: false, error: 'Deactivated account.' });
+    if (!user) return res.status(401).json({ success: false, error: 'Unauthorized.' });
+
+    const db = dbService.get();
+    const tasks = (db.personalTasks || []).filter((t) => t.userId === user.id);
+    res.json({ success: true, tasks });
+  });
+
+  app.post('/api/tasks/personal', (req: Request, res: Response) => {
+    const { user } = getAuthUser(req);
+    if (!user) return res.status(401).json({ success: false, error: 'Unauthorized.' });
+
+    const { title, description, category, priority, relatedCandidateId, relatedCandidateName, dueDate } = req.body;
+    if (!title || !title.trim()) {
+      return res.status(400).json({ success: false, error: 'Task title is required.' });
+    }
+
+    const now = new Date().toISOString();
+    const newTask: PersonalTask = {
+      id: `pt-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      userId: user.id,
+      title: title.trim(),
+      description: description?.trim() || '',
+      category: category || 'GENERAL',
+      status: 'PENDING',
+      priority: priority || 'NORMAL',
+      relatedCandidateId,
+      relatedCandidateName,
+      dueDate,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    dbService.update((draft) => {
+      draft.personalTasks = draft.personalTasks || [];
+      draft.personalTasks.unshift(newTask);
+    });
+
+    res.json({ success: true, task: newTask });
+  });
+
+  app.post('/api/tasks/personal/:id/toggle', (req: Request, res: Response) => {
+    const { user } = getAuthUser(req);
+    const { id } = req.params;
+    if (!user) return res.status(401).json({ success: false, error: 'Unauthorized.' });
+
+    let updatedTask: PersonalTask | null = null;
+    const now = new Date().toISOString();
+
+    dbService.update((draft) => {
+      draft.personalTasks = draft.personalTasks || [];
+      const task = draft.personalTasks.find((t) => t.id === id);
+      if (!task) return;
+
+      // IDOR protection: User can only modify their own task, unless Admin/CEO
+      if (task.userId !== user.id && user.role !== 'ADMIN' && user.role !== 'CEO') {
+        throw new Error('403 Forbidden: Cannot modify another user\'s private task.');
+      }
+
+      task.status = task.status === 'COMPLETED' ? 'PENDING' : 'COMPLETED';
+      task.completedAt = task.status === 'COMPLETED' ? now : undefined;
+      task.updatedAt = now;
+      updatedTask = { ...task };
+    });
+
+    if (!updatedTask) {
+      return res.status(404).json({ success: false, error: 'Task not found or access denied.' });
+    }
+
+    res.json({ success: true, task: updatedTask });
+  });
+
+  app.delete('/api/tasks/personal/:id', (req: Request, res: Response) => {
+    const { user } = getAuthUser(req);
+    const { id } = req.params;
+    if (!user) return res.status(401).json({ success: false, error: 'Unauthorized.' });
+
+    let deleted = false;
+    dbService.update((draft) => {
+      draft.personalTasks = draft.personalTasks || [];
+      const task = draft.personalTasks.find((t) => t.id === id);
+      if (!task) return;
+      if (task.userId !== user.id && user.role !== 'ADMIN' && user.role !== 'CEO') {
+        throw new Error('403 Forbidden');
+      }
+      draft.personalTasks = draft.personalTasks.filter((t) => t.id !== id);
+      deleted = true;
+    });
+
+    res.json({ success: deleted, message: deleted ? 'Task deleted.' : 'Task not found.' });
+  });
+
+  // IDOR Protected Route: Another user's private dashboard
+  app.get('/api/users/:targetUserId/dashboard', (req: Request, res: Response) => {
+    const { user, role } = getAuthUser(req);
+    const { targetUserId } = req.params;
+    if (!user || (user.id !== targetUserId && role !== 'ADMIN' && role !== 'CEO')) {
+      return res.status(403).json({
+        success: false,
+        error: '403 FORBIDDEN: Access to another staff member\'s personal dashboard is strictly restricted.',
+      });
+    }
+
+    const db = dbService.get();
+    const target = db.users.find((u) => u.id === targetUserId);
+    if (!target) return res.status(404).json({ success: false, error: 'User not found.' });
+
+    const myTasks = (db.personalTasks || []).filter((t) => t.userId === targetUserId);
+    const { passwordHash: _h, ...safeTarget } = target;
+    res.json({ success: true, user: safeTarget, tasks: myTasks });
+  });
+
+  // ==========================================
+  // FORGOT PASSWORD & SECURE VERIFICATION FLOW
+  // ==========================================
+  app.post('/api/auth/forgot-password', (req: Request, res: Response) => {
+    const { emailOrUsername } = req.body;
+
+    if (!emailOrUsername || !emailOrUsername.trim()) {
+      return res.status(400).json({ success: false, error: 'Please provide your registered staff email or username.' });
+    }
+
+    const query = emailOrUsername.trim().toLowerCase();
+    const db = dbService.get();
+
+    const user = db.users.find(
+      (u) =>
+        u.email.toLowerCase() === query ||
+        (u.username && u.username.toLowerCase() === query) ||
+        u.id.toLowerCase() === query ||
+        u.name.toLowerCase() === query
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'No active staff account found with this email or username. Please check your spelling or contact Admin.',
+      });
+    }
+
+    if (user.isActive === false) {
+      return res.status(403).json({
+        success: false,
+        error: 'This account is currently deactivated. Please contact Admin (Sameer Sir) directly.',
+      });
+    }
+
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 30 * 60 * 1000).toISOString(); // 30 minutes expiry
+    const token = `rst_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+    const resetLink = `/reset-password?token=${token}`;
+
+    const resetRequest: PasswordResetRequest = {
+      id: `rst-req-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      userId: user.id,
+      userEmail: user.email,
+      userName: user.name,
+      userRole: user.role,
+      token,
+      status: 'PENDING_APPROVAL',
+      requestedAt: now.toISOString(),
+      expiresAt,
+      deliveryMethod: 'EMAIL_SIMULATION',
+      resetLink,
+      ipAddress: (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1',
+    };
+
+    dbService.update((draft) => {
+      draft.passwordResetRequests = draft.passwordResetRequests || [];
+      draft.passwordResetRequests.unshift(resetRequest);
+
+      // Create Admin / CEO notification
+      draft.notifications.unshift({
+        id: `notif-pwd-${Date.now()}`,
+        recipientRole: 'ADMIN',
+        title: `Password Reset Requested: ${user.name}`,
+        message: `${user.name} (${user.role} - ${user.department}) requested a secure password reset link. Admin approval / token verification required.`,
+        priority: 'HIGH',
+        eventType: 'PASSWORD_RESET_REQUESTED',
+        entityId: resetRequest.id,
+        entityType: 'VISITOR',
+        read: false,
+        createdAt: now.toISOString(),
+        actionButtons: [
+          { label: 'Review & Approve', actionKey: 'APPROVE_PASSWORD_RESET' },
+        ],
+      });
+
+      // Also notify CEO
+      draft.notifications.unshift({
+        id: `notif-pwd-ceo-${Date.now()}`,
+        recipientRole: 'CEO',
+        title: `Staff Security Alert: ${user.name}`,
+        message: `Password reset request submitted by ${user.name} (${user.email}).`,
+        priority: 'NORMAL',
+        eventType: 'PASSWORD_RESET_REQUESTED',
+        entityId: resetRequest.id,
+        entityType: 'VISITOR',
+        read: false,
+        createdAt: now.toISOString(),
+      });
+
+      // Immutable Audit Log
+      draft.auditLogs.unshift({
+        id: `aud-${Date.now()}-pw-req`,
+        timestamp: now.toISOString(),
+        actorUserId: user.id,
+        actorName: user.name,
+        actorRole: user.role,
+        action: 'PASSWORD_RESET_REQUESTED',
+        details: `${user.name} requested password reset link via staff portal. Token generated with 30m TTL. Status: PENDING_APPROVAL.`,
+        entityId: user.id,
+        entityType: 'USER',
+      });
+    });
+
+    eventWorkflowEngine.broadcast({
+      type: 'PASSWORD_RESET_REQUESTED',
+      payload: {
+        requestId: resetRequest.id,
+        userId: user.id,
+        userName: user.name,
+        userRole: user.role,
+        userEmail: user.email,
+        token,
+        resetLink,
+        expiresAt,
+      },
+    });
+
+    res.json({
+      success: true,
+      message: `Password reset request registered for ${user.name}. An approval notice has been routed to Admin (Sameer Sir). You can also proceed via secure verification.`,
+      request: resetRequest,
+      simulatedEmailDelivery: {
+        to: user.email,
+        subject: 'WCR Operations - Secure Password Reset Link',
+        body: `Dear ${user.name},\n\nA password reset request was initiated for your White Collar Realty staff account (${user.email}).\n\nReset Link: ${resetLink}\nVerification Token: ${token}\nExpires in: 30 minutes.\n\nIf you did not request this, please notify Sameer Sir immediately.`,
+      },
+    });
+  });
+
+  // Verify Reset Token
+  app.get('/api/auth/reset-password/verify', (req: Request, res: Response) => {
+    const { token } = req.query;
+
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ success: false, error: 'Verification token is required.' });
+    }
+
+    const db = dbService.get();
+    const resetRequests = db.passwordResetRequests || [];
+    const request = resetRequests.find((r) => r.token === token.trim());
+
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        error: 'Invalid or non-existent password reset link. Please submit a new request.',
+      });
+    }
+
+    const now = new Date();
+    const isExpired = now > new Date(request.expiresAt);
+
+    if (isExpired || request.status === 'EXPIRED') {
+      return res.status(410).json({
+        success: false,
+        error: 'This password reset link has expired (30-minute limit exceeded). Please request a fresh reset link.',
+        status: 'EXPIRED',
+      });
+    }
+
+    if (request.status === 'USED') {
+      return res.status(400).json({
+        success: false,
+        error: 'This password reset link has already been used to update your credentials.',
+        status: 'USED',
+      });
+    }
+
+    if (request.status === 'REJECTED') {
+      return res.status(403).json({
+        success: false,
+        error: `This password reset request was declined by administrator: ${request.rejectionReason || 'Policy check'}.`,
+        status: 'REJECTED',
+      });
+    }
+
+    const user = db.users.find((u) => u.id === request.userId);
+
+    res.json({
+      success: true,
+      valid: true,
+      request: {
+        id: request.id,
+        userName: request.userName,
+        userEmail: request.userEmail,
+        userRole: request.userRole,
+        department: user?.department || 'Staff',
+        status: request.status,
+        expiresAt: request.expiresAt,
+        approvedAt: request.approvedAt,
+        approvedByName: request.approvedByName,
+      },
+      requiresAdminApproval: request.status === 'PENDING_APPROVAL',
+      isApproved: request.status === 'APPROVED',
+      canReset: request.status === 'APPROVED' || request.status === 'PENDING_APPROVAL',
+    });
+  });
+
+  // Confirm New Password
+  app.post('/api/auth/reset-password/confirm', (req: Request, res: Response) => {
+    const { token, newPassword } = req.body;
+
+    if (!token || !token.trim()) {
+      return res.status(400).json({ success: false, error: 'Reset token is required.' });
+    }
+
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        error: 'Password must be at least 6 characters in length.',
+      });
+    }
+
+    const db = dbService.get();
+    const resetRequests = db.passwordResetRequests || [];
+    const request = resetRequests.find((r) => r.token === token.trim());
+
+    if (!request) {
+      return res.status(404).json({ success: false, error: 'Invalid password reset token.' });
+    }
+
+    const now = new Date();
+    if (now > new Date(request.expiresAt) || request.status === 'EXPIRED') {
+      return res.status(410).json({ success: false, error: 'Password reset token has expired.' });
+    }
+
+    if (request.status === 'USED') {
+      return res.status(400).json({ success: false, error: 'This token has already been used.' });
+    }
+
+    const user = db.users.find((u) => u.id === request.userId);
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'Target staff user not found in database.' });
+    }
+
+    const newHash = hashPassword(newPassword);
+    const timestamp = now.toISOString();
+
+    dbService.update((draft) => {
+      const u = draft.users.find((x) => x.id === user.id);
+      if (u) {
+        u.passwordHash = newHash;
+        u.updatedAt = timestamp;
+      }
+
+      const r = (draft.passwordResetRequests || []).find((x) => x.id === request.id);
+      if (r) {
+        r.status = 'USED';
+        r.completedAt = timestamp;
+      }
+
+      draft.auditLogs.unshift({
+        id: `aud-${Date.now()}-pw-done`,
+        timestamp,
+        actorUserId: user.id,
+        actorName: user.name,
+        actorRole: user.role,
+        action: 'PASSWORD_RESET_COMPLETED',
+        details: `Password securely updated for ${user.name} (${user.email}) via token verification.`,
+        entityId: user.id,
+        entityType: 'USER',
+      });
+
+      draft.notifications.unshift({
+        id: `notif-pwd-done-${Date.now()}`,
+        recipientRole: 'ADMIN',
+        title: `Password Updated: ${user.name}`,
+        message: `${user.name} (${user.role}) has successfully set a new password.`,
+        priority: 'NORMAL',
+        eventType: 'PASSWORD_RESET_COMPLETED',
+        entityId: user.id,
+        entityType: 'VISITOR',
+        read: false,
+        createdAt: timestamp,
+      });
+    });
+
+    eventWorkflowEngine.broadcast({
+      type: 'PASSWORD_RESET_COMPLETED',
+      payload: { userId: user.id, userName: user.name, userRole: user.role },
+    });
+
+    res.json({
+      success: true,
+      message: `Password successfully updated for ${user.name}! You can now login with your new credentials.`,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
+  });
+
+  // ==========================================
+  // ADMIN PASSWORD RESET QUEUE & APPROVALS
+  // ==========================================
+  app.get('/api/admin/password-resets', (req: Request, res: Response) => {
+    const role = (req.query.role as UserRole) || 'ADMIN';
+    if (role !== 'ADMIN' && role !== 'CEO' && role !== 'CO_FOUNDER') {
+      return res.status(403).json({ success: false, error: 'Unauthorized: Admin or Executive role required.' });
+    }
+
+    const db = dbService.get();
+    const requests = (db.passwordResetRequests || []).map((r) => {
+      const now = new Date();
+      const isExpired = now > new Date(r.expiresAt) && r.status === 'PENDING_APPROVAL';
+      return {
+        ...r,
+        status: isExpired ? ('EXPIRED' as const) : r.status,
+      };
+    });
+
+    res.json({ success: true, requests });
+  });
+
+  app.post('/api/admin/password-resets/:id/approve', (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { adminUserId, adminName, role } = req.body;
+
+    const userRole = (role as UserRole) || 'ADMIN';
+    if (userRole !== 'ADMIN' && userRole !== 'CEO' && userRole !== 'CO_FOUNDER') {
+      return res.status(403).json({ success: false, error: 'Unauthorized: Admin or Executive role required.' });
+    }
+
+    const db = dbService.get();
+    const request = (db.passwordResetRequests || []).find((r) => r.id === id);
+
+    if (!request) {
+      return res.status(404).json({ success: false, error: 'Password reset request not found.' });
+    }
+
+    const timestamp = new Date().toISOString();
+
+    dbService.update((draft) => {
+      const r = (draft.passwordResetRequests || []).find((x) => x.id === id);
+      if (r) {
+        r.status = 'APPROVED';
+        r.approvedAt = timestamp;
+        r.approvedBy = adminUserId || 'usr-admin-sameer';
+        r.approvedByName = adminName || 'Sameer Sir (Admin)';
+      }
+
+      draft.auditLogs.unshift({
+        id: `aud-${Date.now()}-pw-appr`,
+        timestamp,
+        actorUserId: adminUserId || 'usr-admin-sameer',
+        actorName: adminName || 'Sameer Sir',
+        actorRole: userRole,
+        action: 'PASSWORD_RESET_APPROVED',
+        details: `Admin ${adminName || 'Sameer Sir'} approved password reset request for ${request.userName} (${request.userEmail}).`,
+        entityId: request.userId,
+        entityType: 'USER',
+      });
+    });
+
+    eventWorkflowEngine.broadcast({
+      type: 'PASSWORD_RESET_APPROVED',
+      payload: { requestId: id, userId: request.userId, userName: request.userName, resetLink: request.resetLink },
+    });
+
+    res.json({
+      success: true,
+      message: `Password reset request for ${request.userName} approved successfully. Staff member can now complete password update.`,
+      resetLink: request.resetLink,
+    });
+  });
+
+  app.post('/api/admin/password-resets/:id/reject', (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { adminUserId, adminName, role, reason } = req.body;
+
+    const userRole = (role as UserRole) || 'ADMIN';
+    if (userRole !== 'ADMIN' && userRole !== 'CEO' && userRole !== 'CO_FOUNDER') {
+      return res.status(403).json({ success: false, error: 'Unauthorized: Admin or Executive role required.' });
+    }
+
+    const db = dbService.get();
+    const request = (db.passwordResetRequests || []).find((r) => r.id === id);
+
+    if (!request) {
+      return res.status(404).json({ success: false, error: 'Password reset request not found.' });
+    }
+
+    const timestamp = new Date().toISOString();
+
+    dbService.update((draft) => {
+      const r = (draft.passwordResetRequests || []).find((x) => x.id === id);
+      if (r) {
+        r.status = 'REJECTED';
+        r.rejectionReason = reason || 'Declined by administrator';
+      }
+
+      draft.auditLogs.unshift({
+        id: `aud-${Date.now()}-pw-rej`,
+        timestamp,
+        actorUserId: adminUserId || 'usr-admin-sameer',
+        actorName: adminName || 'Sameer Sir',
+        actorRole: userRole,
+        action: 'PASSWORD_RESET_REJECTED',
+        details: `Admin ${adminName || 'Sameer Sir'} rejected password reset request for ${request.userName}. Reason: ${reason || 'Security review'}.`,
+        entityId: request.userId,
+        entityType: 'USER',
+      });
+    });
+
+    res.json({ success: true, message: 'Password reset request rejected.' });
+  });
+
+  // ==========================================
+  // ADMIN FULL ACCESS USER CREDENTIALS & ID/PASSWORD OVERRIDE
+  // ==========================================
+  app.get('/api/admin/users', (req: Request, res: Response) => {
+    const role = (req.query.role as UserRole) || 'ADMIN';
+    const db = dbService.get();
+
+    // Map users with sanitized properties for safe administrative view
+    const users = db.users.map((u) => ({
+      id: u.id,
+      userId: u.userId || u.id,
+      name: u.name,
+      email: u.email,
+      username: u.username || u.email.split('@')[0],
+      role: u.role,
+      designation: u.designation || u.role,
+      department: u.department,
+      permissions: u.permissions || ROLE_PERMISSIONS[u.role] || [],
+      isActive: u.isActive !== false,
+      phone: u.phone,
+      createdAt: u.createdAt,
+      updatedAt: u.updatedAt,
+      lastLoginAt: u.lastLoginAt,
+      hasPassword: Boolean(u.passwordHash),
+    }));
+
+    res.json({ success: true, users });
+  });
+
+  app.post('/api/admin/users/:userId/change-credentials', (req: Request, res: Response) => {
+    const { userId } = req.params;
+    const {
+      adminUserId,
+      adminName,
+      adminRole,
+      newPassword,
+      newUsername,
+      newName,
+      newEmail,
+      newRole,
+      newDepartment,
+      newDesignation,
+      newPhone,
+      isActive,
+    } = req.body;
+
+    const callerRole = (adminRole as UserRole) || 'ADMIN';
+    if (callerRole !== 'ADMIN' && callerRole !== 'CEO' && callerRole !== 'CO_FOUNDER') {
+      return res.status(403).json({
+        success: false,
+        error: 'Unauthorized: Full Access Admin or Executive credentials required to modify staff IDs & passwords.',
+      });
+    }
+
+    const db = dbService.get();
+    const user = db.users.find((u) => u.id === userId || u.userId === userId);
+
+    if (!user) {
+      return res.status(404).json({ success: false, error: `Staff user not found with ID: ${userId}` });
+    }
+
+    const changesRecorded: string[] = [];
+    const timestamp = new Date().toISOString();
+
+    dbService.update((draft) => {
+      const u = draft.users.find((x) => x.id === user.id);
+      if (!u) return;
+
+      if (newName && newName.trim() && newName !== u.name) {
+        changesRecorded.push(`Name changed from "${u.name}" to "${newName.trim()}"`);
+        u.name = newName.trim();
+      }
+
+      if (newUsername && newUsername.trim() && newUsername !== u.username) {
+        // Check uniqueness
+        const duplicate = draft.users.find((x) => x.id !== u.id && x.username?.toLowerCase() === newUsername.trim().toLowerCase());
+        if (duplicate) {
+          throw new Error(`Username "${newUsername.trim()}" is already assigned to another staff user.`);
+        }
+        changesRecorded.push(`Username/ID changed from "${u.username || 'N/A'}" to "${newUsername.trim()}"`);
+        u.username = newUsername.trim();
+      }
+
+      if (newEmail && newEmail.trim() && newEmail.toLowerCase() !== u.email.toLowerCase()) {
+        const duplicateEmail = draft.users.find((x) => x.id !== u.id && x.email.toLowerCase() === newEmail.trim().toLowerCase());
+        if (duplicateEmail) {
+          throw new Error(`Email "${newEmail.trim()}" is already registered to another staff account.`);
+        }
+        changesRecorded.push(`Email changed from "${u.email}" to "${newEmail.trim()}"`);
+        u.email = newEmail.trim();
+      }
+
+      if (newPassword && newPassword.trim()) {
+        if (newPassword.length < 5) {
+          throw new Error('Password must be at least 5 characters long.');
+        }
+        u.passwordHash = hashPassword(newPassword.trim());
+        changesRecorded.push('Password updated / reset by Administrator');
+      }
+
+      if (newRole && newRole !== u.role) {
+        changesRecorded.push(`Role changed from ${u.role} to ${newRole}`);
+        u.role = newRole as UserRole;
+        u.permissions = ROLE_PERMISSIONS[u.role] || u.permissions;
+      }
+
+      if (newDepartment && newDepartment.trim() && newDepartment !== u.department) {
+        changesRecorded.push(`Department updated to "${newDepartment.trim()}"`);
+        u.department = newDepartment.trim();
+      }
+
+      if (newDesignation && newDesignation.trim() && newDesignation !== u.designation) {
+        changesRecorded.push(`Designation updated to "${newDesignation.trim()}"`);
+        u.designation = newDesignation.trim();
+      }
+
+      if (newPhone && newPhone.trim() && newPhone !== u.phone) {
+        changesRecorded.push(`Phone updated to "${newPhone.trim()}"`);
+        u.phone = newPhone.trim();
+      }
+
+      if (typeof isActive === 'boolean' && isActive !== u.isActive) {
+        changesRecorded.push(`Account status changed to ${isActive ? 'ACTIVE' : 'DEACTIVATED'}`);
+        u.isActive = isActive;
+      }
+
+      u.updatedAt = timestamp;
+
+      // Immutable Central Audit Trail Entry
+      draft.auditLogs.unshift({
+        id: `aud-${Date.now()}-adm-cred`,
+        timestamp,
+        actorUserId: adminUserId || 'usr-admin-sameer',
+        actorName: adminName || 'Sameer Sir (Admin)',
+        actorRole: callerRole,
+        action: 'ADMIN_CREDENTIALS_OVERRIDE',
+        details: `Admin ${adminName || 'Sameer Sir'} updated credentials for ${u.name} (${u.id}): ${changesRecorded.join('; ')}.`,
+        entityId: u.id,
+        entityType: 'USER',
+      });
+    });
+
+    eventWorkflowEngine.broadcast({
+      type: 'STAFF_CREDENTIALS_UPDATED',
+      payload: {
+        userId: user.id,
+        changes: changesRecorded,
+        updatedBy: adminName || 'Admin',
+      },
+    });
+
+    res.json({
+      success: true,
+      message: `Successfully updated credentials & profile for ${user.name}.`,
+      changes: changesRecorded,
+    });
+  });
+
+  // Create new staff account
+  app.post('/api/admin/users/create', (req: Request, res: Response) => {
+    const {
+      adminUserId,
+      adminName,
+      adminRole,
+      name,
+      email,
+      username,
+      password,
+      role,
+      department,
+      designation,
+      phone,
+    } = req.body;
+
+    const callerRole = (adminRole as UserRole) || 'ADMIN';
+    if (callerRole !== 'ADMIN' && callerRole !== 'CEO' && callerRole !== 'CO_FOUNDER') {
+      return res.status(403).json({ success: false, error: 'Unauthorized: Admin or Executive role required.' });
+    }
+
+    if (!name || !email || !password || !role) {
+      return res.status(400).json({ success: false, error: 'Name, email, password, and role are required.' });
+    }
+
+    const db = dbService.get();
+    const existing = db.users.find(
+      (u) =>
+        u.email.toLowerCase() === email.trim().toLowerCase() ||
+        (username && u.username?.toLowerCase() === username.trim().toLowerCase())
+    );
+
+    if (existing) {
+      return res.status(400).json({ success: false, error: 'A staff account with this email or username already exists.' });
+    }
+
+    const newUserId = `usr-${role.toLowerCase()}-${Date.now().toString().slice(-4)}`;
+    const now = new Date().toISOString();
+
+    const newUser = {
+      id: newUserId,
+      userId: newUserId,
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
+      username: (username || email.split('@')[0]).trim().toLowerCase(),
+      passwordHash: hashPassword(password),
+      role: role as UserRole,
+      department: department || 'Operations',
+      designation: designation || role,
+      permissions: ROLE_PERMISSIONS[role as UserRole] || [],
+      isActive: true,
+      phone: phone || '',
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    dbService.update((draft) => {
+      draft.users.push(newUser);
+      draft.auditLogs.unshift({
+        id: `aud-${Date.now()}-usr-create`,
+        timestamp: now,
+        actorUserId: adminUserId || 'usr-admin-sameer',
+        actorName: adminName || 'Sameer Sir',
+        actorRole: callerRole,
+        action: 'STAFF_ACCOUNT_CREATED',
+        details: `Created new staff account for ${newUser.name} (${newUser.email}) with role ${newUser.role}.`,
+        entityId: newUser.id,
+        entityType: 'USER',
+      });
+    });
+
+    eventWorkflowEngine.broadcast({
+      type: 'STAFF_ACCOUNT_CREATED',
+      payload: { userId: newUser.id, name: newUser.name, role: newUser.role },
+    });
+
+    const { passwordHash: _hash, ...safeUser } = newUser;
+    res.json({
+      success: true,
+      message: `Staff account for ${newUser.name} created successfully with individual credentials.`,
+      user: safeUser,
+    });
+  });
+
+  // ==========================================
+  // HR ROOM ASSIGNMENT (WITH DOUBLE-BOOKING PROTECTION)
   // ==========================================
   app.post('/api/rooms/assign', (req: Request, res: Response) => {
     const { hrUserId, hrName, candidateId, interviewId, roomId } = req.body;
@@ -1593,8 +2619,8 @@ async function startServer() {
 
     try {
       eventWorkflowEngine.handleRoomAssigned(
-        hrUserId || 'usr-hr-1',
-        hrName || 'Sneha Patel (HR)',
+        hrUserId || 'usr-hr-nisha',
+        hrName || 'Nisha (HR)',
         candidateId,
         interviewId,
         roomId
@@ -1606,7 +2632,8 @@ async function startServer() {
       });
     } catch (err: any) {
       console.error('Room assignment error:', err);
-      res.status(500).json({ success: false, error: err.message || 'Room assignment failed' });
+      const isConflict = err.message && err.message.toLowerCase().includes('double-booking');
+      res.status(isConflict ? 409 : 400).json({ success: false, error: err.message || 'Room assignment failed' });
     }
   });
 
@@ -1786,10 +2813,16 @@ async function startServer() {
         copy.arrivalPhotoCapturedAt = cand.arrivalPhotoCapturedAt;
         copy.arrivalPhotoCapturedBy = cand.arrivalPhotoCapturedBy;
         copy.arrivalPhotoCapturedByName = cand.arrivalPhotoCapturedByName;
-        copy.photoMetadata = cand.photoMetadata;
+        if (cand.photoMetadata) {
+          const meta = { ...cand.photoMetadata };
+          delete (meta as any).photoUrl;
+          copy.photoMetadata = meta;
+        }
       }
       if (visibility.resume) {
-        copy.resumeUrl = cand.resumeUrl;
+        copy.resumeUrl = cand.resumeUrl?.startsWith('data:')
+          ? `/api/candidates/${cand.id}/resume?role=${encodeURIComponent(role)}`
+          : cand.resumeUrl;
         copy.resumeFileName = cand.resumeFileName;
         copy.resumeFileSize = cand.resumeFileSize;
         copy.resumeMimeType = cand.resumeMimeType;
@@ -1812,11 +2845,25 @@ async function startServer() {
   app.get('/api/candidates/:id', (req: Request, res: Response) => {
     const { id } = req.params;
     const role = (req.query.role as UserRole) || 'HR';
+
+    // Test 4 requirement: Pantry tries HR candidate API -> 403 FORBIDDEN
+    if (role === 'PANTRY') {
+      return res.status(403).json({
+        success: false,
+        error: '403 FORBIDDEN: Pantry stewards only receive task-level hospitality operational data. Full candidate dossier access is restricted.',
+      });
+    }
+
+    const includeDeleted = req.query.includeDeleted === 'true' || role === 'ADMIN';
     const db = dbService.get();
 
     const candidate = db.candidates.find((c) => c.id === id);
-    if (!candidate || (candidate as any).isDeleted) {
-      return res.status(404).json({ success: false, error: 'Candidate not found' });
+    if (!candidate) {
+      return res.status(404).json({ success: false, error: `Candidate not found with ID: ${id}` });
+    }
+
+    if ((candidate as any).isDeleted && !includeDeleted) {
+      return res.status(404).json({ success: false, error: 'Candidate record has been archived or removed according to retention policy.', isDeleted: true });
     }
 
     const interviews = db.interviews.filter((i) => i.candidateId === id);
@@ -1855,8 +2902,25 @@ async function startServer() {
     }
 
     // Mask Raw Government ID number across all endpoints except when raw export requested by Admin
-    if (candidateData.governmentId && candidateData.governmentId.rawIdNumber) {
-      delete candidateData.governmentId.rawIdNumber;
+    // Also remove heavy base64 documentDataUrl from the JSON candidate payload (documents are streamed via dedicated endpoints)
+    if (candidateData.governmentId) {
+      const sanitizedGovId = { ...candidateData.governmentId };
+      delete (sanitizedGovId as any).rawIdNumber;
+      delete (sanitizedGovId as any).documentDataUrl;
+      delete (sanitizedGovId as any).fileDataUrl;
+      candidateData.governmentId = sanitizedGovId;
+    }
+
+    // Do not duplicate heavy photo in photoMetadata
+    if (candidateData.photoMetadata && candidateData.photoMetadata.photoUrl) {
+      const sanitizedMeta = { ...candidateData.photoMetadata };
+      delete (sanitizedMeta as any).photoUrl;
+      candidateData.photoMetadata = sanitizedMeta;
+    }
+
+    // Clean up resumeUrl if it is an inline base64 string so JSON responses remain lightweight
+    if (candidateData.resumeUrl && candidateData.resumeUrl.startsWith('data:')) {
+      candidateData.resumeUrl = `/api/candidates/${candidate.id}/resume?role=${encodeURIComponent(role)}`;
     }
 
     res.json({
@@ -1868,14 +2932,18 @@ async function startServer() {
   });
 
   // ==========================================
-  // HR CANDIDATE EDIT (PUT)
+  // HR CANDIDATE EDIT (PUT & PATCH)
   // ==========================================
-  app.put('/api/candidates/:id', (req: Request, res: Response) => {
+  const handleCandidateUpdate = (req: Request, res: Response) => {
     const { id } = req.params;
     const role = (req.query.role || req.headers['x-user-role']) as UserRole;
+    const editorName = (req.query.userName as string) || (req.headers['x-user-name'] as string) || (role === 'HR' ? 'Sneha Patel (HR)' : `${role} Staff`);
 
     if (role !== 'HR' && role !== 'ADMIN' && role !== 'CEO') {
-      return res.status(403).json({ success: false, error: 'Unauthorized: Only HR, Admin, or CEO can edit candidate profiles.' });
+      return res.status(403).json({
+        success: false,
+        error: `403 FORBIDDEN: ${role} staff cannot directly edit candidate profiles. Please submit a Change Request.`,
+      });
     }
 
     const {
@@ -1898,8 +2966,10 @@ async function startServer() {
       departmentToMeet,
       personToMeet,
       purpose,
+      howDidYouHear,
       hrPrivateNotes,
       managementNotes,
+      // Attempted immutable system fields are safely ignored
     } = req.body;
 
     const timestamp = new Date().toISOString();
@@ -1912,15 +2982,16 @@ async function startServer() {
           throw new Error('Candidate not found');
         }
 
-        if (fullName) cand.fullName = fullName;
-        if (phone) cand.phone = phone;
-        if (email) cand.email = email;
+        // Apply authorized field modifications only (system fields like id, createdAt, arrivalTime, etc. are immutable)
+        if (fullName !== undefined) cand.fullName = fullName;
+        if (phone !== undefined) cand.phone = phone;
+        if (email !== undefined) cand.email = email;
         if (address !== undefined) cand.address = address;
         if (city !== undefined) cand.city = city;
         if (state !== undefined) cand.state = state;
         if (pincode !== undefined) cand.pincode = pincode;
-        if (position) cand.position = position;
-        if (department) cand.department = department;
+        if (position !== undefined) cand.position = position;
+        if (department !== undefined) cand.department = department;
         if (totalExperience !== undefined) cand.totalExperience = totalExperience;
         if (relevantExperience !== undefined) cand.relevantExperience = relevantExperience;
         if (currentCompany !== undefined) cand.currentCompany = currentCompany;
@@ -1931,29 +3002,31 @@ async function startServer() {
         if (departmentToMeet !== undefined) cand.departmentToMeet = departmentToMeet;
         if (personToMeet !== undefined) cand.personToMeet = personToMeet;
         if (purpose !== undefined) cand.purpose = purpose;
+        if (howDidYouHear !== undefined) cand.howDidYouHear = howDidYouHear;
         if (hrPrivateNotes !== undefined) cand.hrPrivateNotes = hrPrivateNotes;
         if (managementNotes !== undefined) cand.managementNotes = managementNotes;
 
         cand.updatedAt = timestamp;
-        updatedCandidate = cand;
+        updatedCandidate = { ...cand };
 
         draft.timelineEvents.unshift({
           id: `tl-${Date.now()}-edit`,
           candidateId: id,
           timestamp,
           actorType: 'USER',
-          actorName: role === 'HR' ? 'Sneha Patel (HR)' : 'Authorized Staff',
+          actorName: editorName,
           eventType: 'CANDIDATE_PROFILE_UPDATED',
-          description: `Candidate profile updated by HR/Admin (${role}).`,
+          description: `Candidate profile updated by ${editorName} (${role}). Non-system fields refreshed.`,
         });
 
         draft.auditLogs.unshift({
           id: `aud-${Date.now()}-edit`,
           timestamp,
           actorType: 'USER',
-          actorName: role,
+          actorName: editorName,
+          actorRole: role,
           action: 'CANDIDATE_UPDATED',
-          details: `Candidate record ${id} (${cand.fullName}) edited successfully.`,
+          details: `Candidate record ${id} (${cand.fullName}) edited by ${role}. System fields preserved.`,
           entityId: id,
           entityType: 'CANDIDATE',
         });
@@ -1972,7 +3045,10 @@ async function startServer() {
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message || 'Failed to update candidate' });
     }
-  });
+  };
+
+  app.put('/api/candidates/:id', handleCandidateUpdate);
+  app.patch('/api/candidates/:id', handleCandidateUpdate);
 
   // ==========================================
   // HR CANDIDATE DELETE / ARCHIVE (DELETE)
@@ -2041,9 +3117,514 @@ async function startServer() {
     }
   });
 
+  // ==========================================
+  // ROOMS & PODS MANAGEMENT (ADMIN CONFIGURE)
+  // ==========================================
   app.get('/api/rooms', (req: Request, res: Response) => {
     const db = dbService.get();
     res.json({ success: true, rooms: db.rooms });
+  });
+
+  app.post('/api/rooms', (req: Request, res: Response) => {
+    const { name, type, capacity, floor, preferredFor } = req.body;
+    const actorRole = (req.headers['x-user-role'] || req.query.role || 'ADMIN') as UserRole;
+    const actorName = (req.headers['x-user-name'] || req.query.userName || 'Sameer Sir (Admin)') as string;
+    const actorUserId = (req.headers['x-user-id'] || req.query.userId || 'usr-admin-sameer') as string;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, error: 'Room name is required.' });
+    }
+
+    const timestamp = new Date().toISOString();
+    const newRoom: Room = {
+      id: `room-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      roomId: `room-${Date.now()}`,
+      name: name.trim(),
+      roomName: name.trim(),
+      type: (type as RoomType) || 'MEETING_ROOM',
+      roomType: (type as RoomType) || 'MEETING_ROOM',
+      capacity: Number(capacity) || 6,
+      floor: floor || 'Floor 3',
+      status: 'AVAILABLE',
+      isActive: true,
+      preferredFor: preferredFor || 'Interviews & Business Meetings',
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    dbService.update((draft) => {
+      draft.rooms.push(newRoom);
+      draft.auditLogs.unshift({
+        id: `aud-${Date.now()}-room-add`,
+        timestamp,
+        actorUserId,
+        actorName,
+        actorRole,
+        action: 'ROOM_CREATED',
+        details: `Created new room/pod: "${newRoom.name}" (${newRoom.type}, Capacity: ${newRoom.capacity}).`,
+        entityId: newRoom.id,
+        entityType: 'ROOM',
+      });
+    });
+
+    eventWorkflowEngine.broadcast({ type: 'ROOMS_UPDATED', payload: { room: newRoom } });
+    res.json({ success: true, room: newRoom, message: `Room "${newRoom.name}" created successfully.` });
+  });
+
+  app.put('/api/rooms/:id', (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { name, type, capacity, floor, preferredFor, status, isActive } = req.body;
+    const actorRole = (req.headers['x-user-role'] || req.query.role || 'ADMIN') as UserRole;
+    const actorName = (req.headers['x-user-name'] || req.query.userName || 'Sameer Sir (Admin)') as string;
+    const actorUserId = (req.headers['x-user-id'] || req.query.userId || 'usr-admin-sameer') as string;
+
+    const timestamp = new Date().toISOString();
+    let updatedRoom: Room | null = null;
+
+    dbService.update((draft) => {
+      const room = draft.rooms.find((r) => r.id === id);
+      if (!room) return;
+
+      if (name !== undefined) {
+        room.name = name.trim();
+        room.roomName = name.trim();
+      }
+      if (type !== undefined) {
+        room.type = type as RoomType;
+        room.roomType = type as RoomType;
+      }
+      if (capacity !== undefined) room.capacity = Number(capacity);
+      if (floor !== undefined) room.floor = floor;
+      if (preferredFor !== undefined) room.preferredFor = preferredFor;
+      if (status !== undefined) room.status = status;
+      if (isActive !== undefined) room.isActive = Boolean(isActive);
+      room.updatedAt = timestamp;
+      updatedRoom = { ...room };
+
+      draft.auditLogs.unshift({
+        id: `aud-${Date.now()}-room-edit`,
+        timestamp,
+        actorUserId,
+        actorName,
+        actorRole,
+        action: 'ROOM_UPDATED',
+        details: `Configured room "${room.name}": Type=${room.type}, Capacity=${room.capacity}, Active=${room.isActive}.`,
+        entityId: room.id,
+        entityType: 'ROOM',
+      });
+    });
+
+    if (!updatedRoom) {
+      return res.status(404).json({ success: false, error: 'Room not found.' });
+    }
+
+    eventWorkflowEngine.broadcast({ type: 'ROOMS_UPDATED', payload: { room: updatedRoom } });
+    res.json({ success: true, room: updatedRoom, message: 'Room configuration updated.' });
+  });
+
+  app.patch('/api/rooms/:id/toggle-active', (req: Request, res: Response) => {
+    const { id } = req.params;
+    const actorRole = (req.headers['x-user-role'] || req.query.role || 'ADMIN') as UserRole;
+    const actorName = (req.headers['x-user-name'] || req.query.userName || 'Sameer Sir (Admin)') as string;
+    const actorUserId = (req.headers['x-user-id'] || req.query.userId || 'usr-admin-sameer') as string;
+
+    const timestamp = new Date().toISOString();
+    let updatedRoom: Room | null = null;
+
+    dbService.update((draft) => {
+      const room = draft.rooms.find((r) => r.id === id);
+      if (!room) return;
+      room.isActive = room.isActive === false ? true : false;
+      room.updatedAt = timestamp;
+      updatedRoom = { ...room };
+
+      draft.auditLogs.unshift({
+        id: `aud-${Date.now()}-room-active`,
+        timestamp,
+        actorUserId,
+        actorName,
+        actorRole,
+        action: room.isActive ? 'ROOM_ENABLED' : 'ROOM_DISABLED',
+        details: `${room.isActive ? 'Enabled' : 'Deactivated'} room "${room.name}".`,
+        entityId: room.id,
+        entityType: 'ROOM',
+      });
+    });
+
+    if (!updatedRoom) {
+      return res.status(404).json({ success: false, error: 'Room not found.' });
+    }
+
+    eventWorkflowEngine.broadcast({ type: 'ROOMS_UPDATED', payload: { room: updatedRoom } });
+    res.json({ success: true, room: updatedRoom });
+  });
+
+  app.patch('/api/rooms/:id/status', (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { status } = req.body;
+    let updatedRoom: Room | null = null;
+    const timestamp = new Date().toISOString();
+
+    dbService.update((draft) => {
+      const room = draft.rooms.find((r) => r.id === id);
+      if (!room) return;
+      room.status = status;
+      if (status === 'AVAILABLE') {
+        room.currentCandidateId = undefined;
+        room.currentCandidateName = undefined;
+        room.currentInterviewId = undefined;
+        room.assignedInterviewerName = undefined;
+      }
+      room.updatedAt = timestamp;
+      updatedRoom = { ...room };
+    });
+
+    if (!updatedRoom) {
+      return res.status(404).json({ success: false, error: 'Room not found.' });
+    }
+
+    eventWorkflowEngine.broadcast({ type: 'ROOMS_UPDATED', payload: { room: updatedRoom } });
+    res.json({ success: true, room: updatedRoom });
+  });
+
+  // ==========================================
+  // STAFF USER MANAGEMENT (ADMIN CONTROLS)
+  // ==========================================
+  app.get('/api/users', (req: Request, res: Response) => {
+    const db = dbService.get();
+    const safeUsers = db.users.map(({ passwordHash: _hash, ...safe }) => safe);
+    res.json({ success: true, users: safeUsers });
+  });
+
+  app.post('/api/users', (req: Request, res: Response) => {
+    const { name, email, username, password, role, designation, department, phone } = req.body;
+    const actorRole = (req.headers['x-user-role'] || req.query.role || 'ADMIN') as UserRole;
+    const actorName = (req.headers['x-user-name'] || req.query.userName || 'Sameer Sir (Admin)') as string;
+    const actorUserId = (req.headers['x-user-id'] || req.query.userId || 'usr-admin-sameer') as string;
+
+    if (!name || !email) {
+      return res.status(400).json({ success: false, error: 'Name and Email are required.' });
+    }
+
+    const db = dbService.get();
+    if (db.users.some((u) => u.email.toLowerCase() === email.trim().toLowerCase())) {
+      return res.status(409).json({ success: false, error: 'A staff user with this email already exists.' });
+    }
+
+    const timestamp = new Date().toISOString();
+    const assignedRole = (role as UserRole) || 'HR';
+    const newUser = {
+      id: `usr-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      userId: `usr-${Date.now()}`,
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
+      username: (username || email.split('@')[0]).trim().toLowerCase(),
+      passwordHash: hashPassword(password || 'wcr123'),
+      role: assignedRole,
+      designation: designation || `${assignedRole} Executive`,
+      department: department || (assignedRole === 'HR' ? 'Human Resources' : 'Operations'),
+      permissions: ROLE_PERMISSIONS[assignedRole] || ['BASIC_VIEW'],
+      isActive: true,
+      phone: phone || '',
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    dbService.update((draft) => {
+      draft.users.push(newUser);
+      draft.auditLogs.unshift({
+        id: `aud-${Date.now()}-user-add`,
+        timestamp,
+        actorUserId,
+        actorName,
+        actorRole,
+        action: 'USER_CREATED',
+        details: `Created new staff account for ${newUser.name} (Role: ${newUser.role}, Dept: ${newUser.department}).`,
+        entityId: newUser.id,
+        entityType: 'USER',
+      });
+    });
+
+    const { passwordHash: _hash, ...safe } = newUser;
+    res.json({ success: true, user: safe, message: `Account created for ${newUser.name}.` });
+  });
+
+  app.put('/api/users/:id', (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { name, designation, department, role, phone, permissions } = req.body;
+    const actorRole = (req.headers['x-user-role'] || req.query.role || 'ADMIN') as UserRole;
+    const actorName = (req.headers['x-user-name'] || req.query.userName || 'Sameer Sir (Admin)') as string;
+    const actorUserId = (req.headers['x-user-id'] || req.query.userId || 'usr-admin-sameer') as string;
+
+    const timestamp = new Date().toISOString();
+    let updatedUser: any = null;
+
+    dbService.update((draft) => {
+      const user = draft.users.find((u) => u.id === id);
+      if (!user) return;
+
+      if (name) user.name = name.trim();
+      if (designation) user.designation = designation.trim();
+      if (department) user.department = department.trim();
+      if (role) {
+        user.role = role as UserRole;
+        if (!permissions) user.permissions = ROLE_PERMISSIONS[user.role];
+      }
+      if (phone !== undefined) user.phone = phone;
+      if (permissions) user.permissions = permissions;
+      user.updatedAt = timestamp;
+      const { passwordHash: _hash, ...safe } = user;
+      updatedUser = safe;
+
+      draft.auditLogs.unshift({
+        id: `aud-${Date.now()}-user-edit`,
+        timestamp,
+        actorUserId,
+        actorName,
+        actorRole,
+        action: 'USER_UPDATED',
+        details: `Updated staff profile for ${user.name} (Role: ${user.role}).`,
+        entityId: user.id,
+        entityType: 'USER',
+      });
+    });
+
+    if (!updatedUser) {
+      return res.status(404).json({ success: false, error: 'User not found.' });
+    }
+
+    res.json({ success: true, user: updatedUser, message: 'User profile updated.' });
+  });
+
+  app.patch('/api/users/:id/toggle-active', (req: Request, res: Response) => {
+    const { id } = req.params;
+    const actorRole = (req.headers['x-user-role'] || req.query.role || 'ADMIN') as UserRole;
+    const actorName = (req.headers['x-user-name'] || req.query.userName || 'Sameer Sir (Admin)') as string;
+    const actorUserId = (req.headers['x-user-id'] || req.query.userId || 'usr-admin-sameer') as string;
+
+    const timestamp = new Date().toISOString();
+    let updatedUser: any = null;
+
+    dbService.update((draft) => {
+      const user = draft.users.find((u) => u.id === id);
+      if (!user) return;
+      user.isActive = user.isActive === false ? true : false;
+      user.updatedAt = timestamp;
+      const { passwordHash: _hash, ...safe } = user;
+      updatedUser = safe;
+
+      draft.auditLogs.unshift({
+        id: `aud-${Date.now()}-user-status`,
+        timestamp,
+        actorUserId,
+        actorName,
+        actorRole,
+        action: user.isActive ? 'USER_ENABLED' : 'USER_DISABLED',
+        details: `${user.isActive ? 'Enabled' : 'Disabled'} account for ${user.name} (${user.role}).`,
+        entityId: user.id,
+        entityType: 'USER',
+      });
+    });
+
+    if (!updatedUser) {
+      return res.status(404).json({ success: false, error: 'User not found.' });
+    }
+
+    res.json({ success: true, user: updatedUser });
+  });
+
+  app.post('/api/users/:id/reset-password', (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { newPassword } = req.body;
+    const actorRole = (req.headers['x-user-role'] || req.query.role || 'ADMIN') as UserRole;
+    const actorName = (req.headers['x-user-name'] || req.query.userName || 'Sameer Sir (Admin)') as string;
+    const actorUserId = (req.headers['x-user-id'] || req.query.userId || 'usr-admin-sameer') as string;
+
+    const passwordToSet = newPassword || 'wcr123';
+    const timestamp = new Date().toISOString();
+    let userFound = false;
+
+    dbService.update((draft) => {
+      const user = draft.users.find((u) => u.id === id);
+      if (!user) return;
+      userFound = true;
+      user.passwordHash = hashPassword(passwordToSet);
+      user.updatedAt = timestamp;
+
+      draft.auditLogs.unshift({
+        id: `aud-${Date.now()}-pwd-reset`,
+        timestamp,
+        actorUserId,
+        actorName,
+        actorRole,
+        action: 'PASSWORD_RESET',
+        details: `Admin reset password for user ${user.name} (${user.email}).`,
+        entityId: user.id,
+        entityType: 'USER',
+      });
+    });
+
+    if (!userFound) {
+      return res.status(404).json({ success: false, error: 'User not found.' });
+    }
+
+    res.json({ success: true, message: 'Password has been securely reset.' });
+  });
+
+  // ==========================================
+  // RECEPTION CANDIDATE CHANGE REQUESTS
+  // ==========================================
+  app.post('/api/change-requests', (req: Request, res: Response) => {
+    const { candidateId, requestedField, suggestedValue, reason } = req.body;
+    const requestedByUserId = (req.headers['x-user-id'] || 'usr-rec-ananya') as string;
+    const requestedByUserName = (req.headers['x-user-name'] || 'Ananya Sen (Reception)') as string;
+    const requestedByUserRole = (req.headers['x-user-role'] || 'RECEPTION') as UserRole;
+
+    if (!candidateId || !requestedField || suggestedValue === undefined) {
+      return res.status(400).json({ success: false, error: 'candidateId, requestedField, and suggestedValue are required.' });
+    }
+
+    const db = dbService.get();
+    const candidate = db.candidates.find((c) => c.id === candidateId);
+    if (!candidate) {
+      return res.status(404).json({ success: false, error: 'Candidate not found.' });
+    }
+
+    const timestamp = new Date().toISOString();
+    const currentValue = String((candidate as any)[requestedField] || '');
+
+    const newRequest: CandidateChangeRequest = {
+      id: `req-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      candidateId,
+      candidateName: candidate.fullName,
+      requestedByUserId,
+      requestedByUserName,
+      requestedByUserRole,
+      requestedField,
+      currentValue,
+      suggestedValue: String(suggestedValue),
+      reason: reason || 'Front desk data correction verified at reception',
+      status: 'PENDING',
+      createdAt: timestamp,
+    };
+
+    dbService.update((draft) => {
+      draft.changeRequests = draft.changeRequests || [];
+      draft.changeRequests.unshift(newRequest);
+
+      draft.notifications.unshift({
+        id: `notif-${Date.now()}-change-req`,
+        recipientRole: 'HR',
+        title: 'Correction Requested by Reception',
+        message: `${requestedByUserName} requested correction for candidate ${candidate.fullName}: ${requestedField} = "${suggestedValue}".`,
+        priority: 'HIGH',
+        eventType: 'CHANGE_REQUEST_CREATED',
+        entityId: newRequest.id,
+        entityType: 'CANDIDATE',
+        read: false,
+        createdAt: timestamp,
+        actionButtons: [
+          { label: 'Review & Approve', actionKey: 'VIEW_CHANGE_REQUESTS', payload: { requestId: newRequest.id } },
+        ],
+      });
+
+      draft.auditLogs.unshift({
+        id: `aud-${Date.now()}-change-req`,
+        timestamp,
+        actorUserId: requestedByUserId,
+        actorName: requestedByUserName,
+        actorRole: requestedByUserRole,
+        action: 'CHANGE_REQUEST_CREATED',
+        details: `Reception requested correction for ${candidate.fullName}: ${requestedField} -> "${suggestedValue}". Reason: ${newRequest.reason}`,
+        entityId: candidate.id,
+        entityType: 'CANDIDATE',
+      });
+    });
+
+    eventWorkflowEngine.broadcast({
+      type: 'CHANGE_REQUEST_CREATED',
+      payload: newRequest,
+    });
+
+    res.json({
+      success: true,
+      request: newRequest,
+      message: 'Correction request submitted to HR & Admin.',
+    });
+  });
+
+  app.get('/api/change-requests', (req: Request, res: Response) => {
+    const db = dbService.get();
+    res.json({ success: true, requests: db.changeRequests || [] });
+  });
+
+  app.post('/api/change-requests/:id/resolve', (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { decision, notes } = req.body;
+    const resolverUserId = (req.headers['x-user-id'] || 'usr-hr-nisha') as string;
+    const resolverUserName = (req.headers['x-user-name'] || 'Nisha (HR)') as string;
+    const resolverRole = (req.headers['x-user-role'] || 'HR') as UserRole;
+
+    const timestamp = new Date().toISOString();
+    let resolvedRequest: CandidateChangeRequest | null = null;
+
+    dbService.update((draft) => {
+      draft.changeRequests = draft.changeRequests || [];
+      const cr = draft.changeRequests.find((r) => r.id === id);
+      if (!cr) return;
+
+      cr.status = decision === 'APPROVE' ? 'APPROVED' : 'REJECTED';
+      cr.resolvedAt = timestamp;
+      cr.resolvedByUserId = resolverUserId;
+      cr.resolvedByUserName = resolverUserName;
+      cr.resolutionNotes = notes || '';
+      resolvedRequest = { ...cr };
+
+      if (decision === 'APPROVE') {
+        const cand = draft.candidates.find((c) => c.id === cr.candidateId);
+        if (cand) {
+          (cand as any)[cr.requestedField] = cr.suggestedValue;
+          cand.updatedAt = timestamp;
+
+          draft.timelineEvents.unshift({
+            id: `tl-${Date.now()}-change-app`,
+            candidateId: cand.id,
+            timestamp,
+            actorType: 'USER',
+            actorName: resolverUserName,
+            eventType: 'CANDIDATE_DATA_CORRECTED',
+            description: `Field "${cr.requestedField}" updated to "${cr.suggestedValue}" (Approved request from ${cr.requestedByUserName}).`,
+          });
+        }
+      }
+
+      draft.auditLogs.unshift({
+        id: `aud-${Date.now()}-change-res`,
+        timestamp,
+        actorUserId: resolverUserId,
+        actorName: resolverUserName,
+        actorRole: resolverRole,
+        action: decision === 'APPROVE' ? 'CHANGE_REQUEST_APPROVED' : 'CHANGE_REQUEST_REJECTED',
+        details: `${resolverUserName} (${resolverRole}) ${decision === 'APPROVE' ? 'approved' : 'rejected'} correction request for ${cr.candidateName}: ${cr.requestedField} -> "${cr.suggestedValue}".`,
+        entityId: cr.candidateId,
+        entityType: 'CANDIDATE',
+      });
+    });
+
+    if (!resolvedRequest) {
+      return res.status(404).json({ success: false, error: 'Change request not found.' });
+    }
+
+    eventWorkflowEngine.broadcast({
+      type: 'CHANGE_REQUEST_RESOLVED',
+      payload: resolvedRequest,
+    });
+
+    res.json({
+      success: true,
+      request: resolvedRequest,
+      message: `Change request ${decision === 'APPROVE' ? 'approved and applied' : 'rejected'}.`,
+    });
   });
 
   app.get('/api/interviews', (req: Request, res: Response) => {
@@ -2051,9 +3632,24 @@ async function startServer() {
     res.json({ success: true, interviews: db.interviews });
   });
 
+  // PANTRY TASK LIST (MINIMUM TASK DATA ONLY)
   app.get('/api/pantry/tasks', (req: Request, res: Response) => {
     const db = dbService.get();
-    res.json({ success: true, tasks: db.pantryTasks });
+    const sanitizedTasks = db.pantryTasks.map((t) => ({
+      id: t.id,
+      roomId: t.roomId,
+      roomName: t.roomName,
+      candidateName: t.candidateName,
+      taskType: t.taskType,
+      description: t.description,
+      requiredItems: t.requiredItems,
+      priority: t.priority,
+      status: t.status,
+      assignedSteward: t.assignedSteward,
+      completedAt: t.completedAt,
+      createdAt: t.createdAt,
+    }));
+    res.json({ success: true, tasks: sanitizedTasks });
   });
 
   app.get('/api/notifications', (req: Request, res: Response) => {
@@ -2219,9 +3815,31 @@ async function startServer() {
       appType: 'spa',
     });
     app.use(vite.middlewares);
+
+    // Guaranteed SPA HTML Fallback for any client-side route
+    app.use('*', async (req: Request, res: Response, next) => {
+      if (req.originalUrl.startsWith('/api/')) {
+        return res.status(404).json({ success: false, error: `API endpoint ${req.originalUrl} not found.` });
+      }
+      try {
+        const indexPath = path.resolve(__dirname, 'index.html');
+        if (fs.existsSync(indexPath)) {
+          let template = fs.readFileSync(indexPath, 'utf-8');
+          template = await vite.transformIndexHtml(req.originalUrl, template);
+          return res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+        }
+        next();
+      } catch (e) {
+        vite.ssrFixStacktrace(e as Error);
+        next(e);
+      }
+    });
   } else {
     app.use(express.static(path.resolve(__dirname, 'dist')));
     app.get('*', (req: Request, res: Response) => {
+      if (req.originalUrl.startsWith('/api/')) {
+        return res.status(404).json({ success: false, error: `API endpoint ${req.originalUrl} not found.` });
+      }
       res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
     });
   }

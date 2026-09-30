@@ -8,20 +8,30 @@ import {
   RefreshCw,
   Droplet,
   ShieldCheck,
+  UserCheck,
 } from 'lucide-react';
-import type { PantryTask, Room } from '../../types/index.ts';
+import type { PantryTask, Room, User, PersonalTask, Notification } from '../../types/index.ts';
 
 interface PantryDashboardProps {
   tasks: PantryTask[];
   rooms: Room[];
+  currentUser?: User | null;
+  personalTasks?: PersonalTask[];
+  notifications?: Notification[];
+  onTogglePersonalTask?: (id: string) => void;
+  onAddPersonalTask?: (task: any) => void;
+  onDeletePersonalTask?: (id: string) => void;
   onCompleteTask: (taskId: string) => void;
+  onOpenSwitchUser?: () => void;
   onRefresh: () => void;
 }
 
 export const PantryDashboard: React.FC<PantryDashboardProps> = ({
   tasks,
   rooms,
+  currentUser,
   onCompleteTask,
+  onOpenSwitchUser,
   onRefresh,
 }) => {
   const pendingTasks = tasks.filter((t) => t.status === 'PENDING' || t.status === 'IN_PROGRESS');
@@ -39,7 +49,7 @@ export const PantryDashboard: React.FC<PantryDashboardProps> = ({
             </h1>
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
-            Logged-in steward: <strong className="text-amber-400">Suresh Kumar</strong> • Floor 3 & 4 Pantry Station
+            Logged-in steward: <strong className="text-amber-400">{currentUser?.name || 'Ramesh Kumar'}</strong> ({currentUser?.designation || 'Hospitality Executive'}) • Floor 3 & 4 Pantry Station
           </p>
         </div>
 
@@ -50,6 +60,15 @@ export const PantryDashboard: React.FC<PantryDashboardProps> = ({
           <span className="px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-semibold">
             {completedTasks.length} Done Today
           </span>
+          {onOpenSwitchUser && (
+            <button
+              onClick={onOpenSwitchUser}
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 font-semibold border border-slate-700 transition cursor-pointer flex items-center gap-1.5"
+            >
+              <UserCheck className="w-3.5 h-3.5 text-amber-400" />
+              <span>Switch User</span>
+            </button>
+          )}
         </div>
       </div>
 

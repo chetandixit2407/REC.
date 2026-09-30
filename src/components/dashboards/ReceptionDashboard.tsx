@@ -16,21 +16,29 @@ import {
   FileText,
   Eye,
   AlertTriangle,
-  User,
   Search,
 } from 'lucide-react';
-import type { Candidate, Room, Visitor } from '../../types/index.ts';
+import type { Candidate, Room, Visitor, User, PersonalTask, Notification, Interview } from '../../types/index.ts';
 import { ReceptionPhotoModal } from '../ReceptionPhotoModal.tsx';
 import { CandidateDossierModal } from '../CandidateDossierModal.tsx';
+import { PersonalScopeWidget } from '../PersonalScopeWidget.tsx';
 
 interface ReceptionDashboardProps {
   candidates: Candidate[];
   rooms: Room[];
   visitors: Visitor[];
+  currentUser?: User | null;
+  personalTasks?: PersonalTask[];
+  interviews?: Interview[];
+  notifications?: Notification[];
+  onTogglePersonalTask?: (id: string) => void;
+  onAddPersonalTask?: (task: any) => void;
+  onDeletePersonalTask?: (id: string) => void;
   onCheckout: (candidateId: string) => void;
   onOpenCheckIn: () => void;
   onOpenWalkIn: () => void;
   onOpenQR: () => void;
+  onOpenSwitchUser?: () => void;
   onRefresh?: () => void;
 }
 
@@ -38,10 +46,18 @@ export const ReceptionDashboard: React.FC<ReceptionDashboardProps> = ({
   candidates,
   rooms,
   visitors,
+  currentUser,
+  personalTasks = [],
+  interviews = [],
+  notifications = [],
+  onTogglePersonalTask = () => {},
+  onAddPersonalTask = () => {},
+  onDeletePersonalTask = () => {},
   onCheckout,
   onOpenCheckIn,
   onOpenWalkIn,
   onOpenQR,
+  onOpenSwitchUser,
   onRefresh,
 }) => {
   const [selectedPhotoCandidate, setSelectedPhotoCandidate] = useState<Candidate | null>(null);
@@ -103,6 +119,20 @@ export const ReceptionDashboard: React.FC<ReceptionDashboardProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
+      {/* Isolated Personal Dashboard Hub */}
+      <PersonalScopeWidget
+        currentUser={currentUser || null}
+        tasks={personalTasks}
+        candidates={candidates}
+        interviews={interviews}
+        notifications={notifications}
+        onToggleTask={onTogglePersonalTask}
+        onAddTask={onAddPersonalTask}
+        onDeleteTask={onDeletePersonalTask}
+        onOpenDossier={(id) => setSelectedProfileCandidateId(id)}
+        onOpenSwitchUser={onOpenSwitchUser}
+      />
+
       {/* Front Desk Bar */}
       <div className="p-6 bg-slate-900 border border-slate-800 rounded-3xl shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
@@ -451,6 +481,7 @@ export const ReceptionDashboard: React.FC<ReceptionDashboardProps> = ({
       {selectedProfileCandidateId && (
         <CandidateDossierModal
           candidateId={selectedProfileCandidateId}
+          initialCandidate={candidates.find((c) => c.id === selectedProfileCandidateId)}
           currentRole="RECEPTION"
           onClose={() => setSelectedProfileCandidateId(null)}
           onPhotoCaptured={() => {

@@ -199,9 +199,9 @@ export const GeneralNewCandidateRegister: React.FC<GeneralNewCandidateRegisterPr
       const timer = setTimeout(() => {
         if (onSuccess && submittedCandidate) {
           onSuccess(submittedCandidate);
-        } else {
-          window.location.href = '/';
         }
+        window.history.pushState({}, '', '/registration-complete');
+        window.dispatchEvent(new PopStateEvent('popstate'));
       }, 2000);
       return () => clearTimeout(timer);
     }
@@ -317,11 +317,10 @@ export const GeneralNewCandidateRegister: React.FC<GeneralNewCandidateRegisterPr
           month: 'long',
           year: 'numeric',
         }) +
-        ' • ' +
+        ', ' +
         date.toLocaleTimeString('en-US', {
-          hour: '2-digit',
+          hour: 'numeric',
           minute: '2-digit',
-          second: '2-digit',
           hour12: true,
         })
       );
@@ -604,15 +603,15 @@ export const GeneralNewCandidateRegister: React.FC<GeneralNewCandidateRegisterPr
                 WHITE COLLAR REALTY
               </span>
             </div>
-            <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-              Registration Completed
+            <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight flex items-center justify-center gap-2">
+              <span className="text-emerald-400">✓</span> Form Submitted Successfully
             </h2>
-            <p className="text-sm text-emerald-400 font-semibold mt-1">
-              Your profile, Government ID, and resume have been verified & submitted.
+            <p className="text-sm text-slate-300 font-medium mt-1">
+              Your registration has been submitted successfully.
             </p>
-            <p className="text-xs text-slate-400 mt-1">
-              Please take a seat in the lounge. Front Desk and Interview Coordinators have received your profile.
-            </p>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold rounded-full mt-2">
+              <span>Automatic exit in approximately 2 seconds...</span>
+            </div>
           </div>
 
           {liveNotice && (

@@ -84,6 +84,40 @@ export const CandidateCheckInForm: React.FC<CandidateCheckInFormProps> = ({
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submittedCandidate, setSubmittedCandidate] = useState<any>(null);
+  const [submissionTime, setSubmissionTime] = useState<string>('');
+
+  const formatAuthoritativeTimestamp = (isoString?: string): string => {
+    try {
+      const date = isoString ? new Date(isoString) : new Date();
+      return (
+        date.toLocaleDateString('en-GB', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        }) +
+        ', ' +
+        date.toLocaleTimeString('en-US', {
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true,
+        })
+      );
+    } catch {
+      return new Date().toLocaleString();
+    }
+  };
+
+  // 2-second auto-exit after submission
+  useEffect(() => {
+    if (submittedCandidate) {
+      const timer = setTimeout(() => {
+        if (onSuccess) onSuccess(submittedCandidate);
+        window.history.pushState({}, '', '/registration-complete');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [submittedCandidate, onSuccess]);
 
   // Real-time live status tracking for submitted candidate
   const [liveStatus, setLiveStatus] = useState<string>('ARRIVED');
@@ -294,6 +328,7 @@ export const CandidateCheckInForm: React.FC<CandidateCheckInFormProps> = ({
       }
 
       setSubmittedCandidate(data.candidate);
+      setSubmissionTime(data.submissionTime || data.session?.completedAt || new Date().toISOString());
       setLiveLocation(data.candidate.currentLocation || 'Reception / Waiting Lounge');
       setLiveStatus(data.candidate.status || 'ARRIVED');
       setLiveNotice('Check-in verified and saved to database. Coordinator alerted.');
@@ -308,6 +343,7 @@ export const CandidateCheckInForm: React.FC<CandidateCheckInFormProps> = ({
 
   // SUCCESS & LIVE WORKFLOW TRACKING SCREEN
   if (submittedCandidate) {
+    const regId = submittedCandidate.id || tokenInput;
     return (
       <div className="w-full max-w-xl mx-auto bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl text-slate-100 animate-in fade-in zoom-in-95 duration-300">
         <div className="text-center space-y-4">
@@ -316,67 +352,75 @@ export const CandidateCheckInForm: React.FC<CandidateCheckInFormProps> = ({
           </div>
 
           <div>
-            <span className="inline-block px-3 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold rounded-full mb-2 tracking-wide uppercase">
-              Check-In Successful & Authenticated
-            </span>
-            <h2 className="text-2xl font-bold text-white tracking-tight">
-              Welcome to White Collar Realty
+            <div className="flex items-center justify-center gap-2 mb-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-xs font-black tracking-widest text-amber-400 uppercase">
+                WHITE COLLAR REALTY
+              </span>
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight flex items-center justify-center gap-2">
+              <span className="text-emerald-400">✓</span> Form Submitted Successfully
             </h2>
-            <p className="text-xs text-slate-400 mt-1">
-              Your details and live photo are verified and stored authoritatively in the office database.
+            <p className="text-sm text-slate-300 font-medium mt-1">
+              Your registration has been submitted successfully.
             </p>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold rounded-full mt-2">
+              <span>Automatic exit in approximately 2 seconds...</span>
+            </div>
           </div>
 
           {/* Real-time Status Alert Banner */}
           {liveNotice && (
-            <div className="p-3.5 bg-gradient-to-r from-amber-500/20 via-slate-900 to-amber-500/20 border border-amber-500/50 rounded-2xl flex items-center justify-center gap-2 text-xs text-amber-200 font-semibold animate-pulse shadow-md">
+            <div className="p-3.5 bg-gradient-to-r from-amber-500/20 via-slate-900 to-amber-500/20 border border-amber-500/50 rounded-2xl flex items-center justify-center gap-2 text-xs text-amber-200 font-semibold shadow-md">
               <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
               <span>{liveNotice}</span>
             </div>
           )}
 
-          {/* Live Candidate Dossier Summary Card */}
+          {/* Authoritative Receipt Card */}
           <div className="bg-slate-950/90 border border-slate-800 rounded-2xl p-5 text-left space-y-3.5 mt-4">
-            <div className="flex items-center gap-4 pb-3 border-b border-slate-800">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pb-3 border-b border-slate-800">
+              <div className="bg-slate-900/70 p-3 rounded-xl border border-slate-800">
+                <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">
+                  Registration ID:
+                </span>
+                <span className="text-sm font-mono font-bold text-amber-400 block mt-0.5">
+                  {regId}
+                </span>
+              </div>
+
+              <div className="bg-slate-900/70 p-3 rounded-xl border border-slate-800">
+                <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">
+                  Submission Time:
+                </span>
+                <span className="text-slate-200 font-mono text-[11px] font-semibold block mt-0.5">
+                  {formatAuthoritativeTimestamp(submissionTime)}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4 py-1">
               {livePhoto ? (
                 <img
                   src={livePhoto}
                   alt={submittedCandidate.fullName}
-                  className="w-14 h-14 rounded-full object-cover border-2 border-amber-500 shadow-md"
+                  className="w-14 h-14 rounded-2xl object-cover border-2 border-emerald-500 shadow-md shrink-0"
                 />
               ) : (
-                <div className="w-14 h-14 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400">
+                <div className="w-14 h-14 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 shrink-0">
                   <User className="w-7 h-7" />
                 </div>
               )}
               <div>
-                <h3 className="text-lg font-bold text-white">{submittedCandidate.fullName}</h3>
+                <h3 className="text-base font-bold text-white">{submittedCandidate.fullName}</h3>
                 <p className="text-xs text-amber-400 font-medium">{submittedCandidate.position}</p>
-                <p className="text-[11px] text-slate-400">Visitor Pass ID: {submittedCandidate.id}</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
-                <span className="text-slate-400 block text-[10px] uppercase font-semibold">Live Status</span>
-                <span className="text-emerald-400 font-bold flex items-center gap-1.5 mt-0.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                  {liveStatus}
-                </span>
-              </div>
-
-              <div className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
-                <span className="text-slate-400 block text-[10px] uppercase font-semibold">Designated Location</span>
-                <span className="text-amber-400 font-bold flex items-center gap-1 mt-0.5">
-                  <MapPin className="w-3.5 h-3.5" />
-                  {liveLocation}
-                </span>
+                <p className="text-[11px] text-slate-400">Status: <strong className="text-emerald-400">{liveStatus}</strong></p>
               </div>
             </div>
 
             <div className="p-3 bg-slate-900/80 rounded-xl border border-slate-800/80 text-[11px] text-slate-400 leading-relaxed">
               <span className="text-slate-300 font-medium block mb-1">What Happens Next:</span>
-              HR is currently reviewing the room availability. When your room is assigned, this screen will automatically update with your designated room number. Please remain in the reception lounge.
+              HR and front-desk coordinators have received your check-in. Please remain in the reception lounge.
             </div>
           </div>
 

@@ -25,6 +25,7 @@ import {
   Edit3,
   Trash2,
   Save,
+  RefreshCw,
 } from 'lucide-react';
 import type { Candidate, Interview, TimelineEvent, UserRole } from '../types/index.ts';
 import { formatDateTime } from '../utils/dateFormatter.ts';
@@ -34,6 +35,7 @@ import { ReceptionPhotoModal } from './ReceptionPhotoModal.tsx';
 
 interface CandidateDossierModalProps {
   candidateId: string;
+  initialCandidate?: Candidate;
   currentRole: UserRole;
   onClose: () => void;
   onAssignRoom?: (candidateId: string, interviewId?: string) => void;
@@ -44,6 +46,7 @@ interface CandidateDossierModalProps {
 
 export const CandidateDossierModal: React.FC<CandidateDossierModalProps> = ({
   candidateId,
+  initialCandidate,
   currentRole,
   onClose,
   onAssignRoom,
@@ -51,8 +54,9 @@ export const CandidateDossierModal: React.FC<CandidateDossierModalProps> = ({
   onCandidateUpdated,
   onCandidateDeleted,
 }) => {
-  const [loading, setLoading] = useState<boolean>(true);
-  const [candidate, setCandidate] = useState<Candidate | null>(null);
+  const [loading, setLoading] = useState<boolean>(!initialCandidate);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [candidate, setCandidate] = useState<Candidate | null>(initialCandidate || null);
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
   const [activeTab, setActiveTab] = useState<'profile' | 'validation' | 'timeline' | 'interviews'>('profile');
@@ -69,60 +73,144 @@ export const CandidateDossierModal: React.FC<CandidateDossierModalProps> = ({
   const [deleting, setDeleting] = useState<boolean>(false);
 
   const [editForm, setEditForm] = useState({
-    fullName: '',
-    phone: '',
-    email: '',
-    address: '',
-    city: '',
-    state: '',
-    pincode: '',
-    position: '',
-    department: '',
-    totalExperience: '',
-    currentCompany: '',
-    qualification: '',
-    noticePeriod: '',
-    expectedSalary: '',
-    skills: '',
-    hrPrivateNotes: '',
+    fullName: initialCandidate?.fullName || '',
+    phone: initialCandidate?.phone || '',
+    email: initialCandidate?.email || '',
+    address: initialCandidate?.address || '',
+    city: initialCandidate?.city || '',
+    state: initialCandidate?.state || '',
+    pincode: initialCandidate?.pincode || '',
+    position: initialCandidate?.position || '',
+    department: initialCandidate?.department || '',
+    totalExperience: initialCandidate?.totalExperience || '',
+    relevantExperience: initialCandidate?.relevantExperience || '',
+    currentCompany: initialCandidate?.currentCompany || '',
+    qualification: initialCandidate?.qualification || '',
+    noticePeriod: initialCandidate?.noticePeriod || '',
+    expectedSalary: initialCandidate?.expectedSalary || '',
+    skills: initialCandidate?.skills || '',
+    purpose: initialCandidate?.purpose || 'Interview / Job Application',
+    departmentToMeet: initialCandidate?.departmentToMeet || 'HR & Recruitment',
+    personToMeet: initialCandidate?.personToMeet || '',
+    hrPrivateNotes: initialCandidate?.hrPrivateNotes || '',
   });
 
+  // Keep candidate synced if initialCandidate is supplied or updated
   useEffect(() => {
-    fetchCandidate();
+    if (initialCandidate) {
+      setCandidate(initialCandidate);
+      setLoading(false);
+      setFetchError(null);
+      setEditForm((prev) => ({
+        fullName: initialCandidate.fullName || prev.fullName,
+        phone: initialCandidate.phone || prev.phone,
+        email: initialCandidate.email || prev.email,
+        address: initialCandidate.address || prev.address,
+        city: initialCandidate.city || prev.city,
+        state: initialCandidate.state || prev.state,
+        pincode: initialCandidate.pincode || prev.pincode,
+        position: initialCandidate.position || prev.position,
+        department: initialCandidate.department || prev.department,
+        totalExperience: initialCandidate.totalExperience || prev.totalExperience,
+        relevantExperience: initialCandidate.relevantExperience || prev.relevantExperience,
+        currentCompany: initialCandidate.currentCompany || prev.currentCompany,
+        qualification: initialCandidate.qualification || prev.qualification,
+        noticePeriod: initialCandidate.noticePeriod || prev.noticePeriod,
+        expectedSalary: initialCandidate.expectedSalary || prev.expectedSalary,
+        skills: initialCandidate.skills || prev.skills,
+        purpose: initialCandidate.purpose || prev.purpose,
+        departmentToMeet: initialCandidate.departmentToMeet || prev.departmentToMeet,
+        personToMeet: initialCandidate.personToMeet || prev.personToMeet,
+        hrPrivateNotes: initialCandidate.hrPrivateNotes || prev.hrPrivateNotes,
+      }));
+    }
+  }, [initialCandidate]);
+
+  useEffect(() => {
+    fetchCandidate(2);
   }, [candidateId, currentRole]);
 
-  const fetchCandidate = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/candidates/${candidateId}?role=${currentRole}`);
-      const data = await res.json();
-      if (data.success && data.candidate) {
-        setCandidate(data.candidate);
-        setInterviews(data.interviews || []);
-        setTimeline(data.timeline || []);
-        setEditForm({
-          fullName: data.candidate.fullName || '',
-          phone: data.candidate.phone || '',
-          email: data.candidate.email || '',
-          address: data.candidate.address || '',
-          city: data.candidate.city || '',
-          state: data.candidate.state || '',
-          pincode: data.candidate.pincode || '',
-          position: data.candidate.position || '',
-          department: data.candidate.department || '',
-          totalExperience: data.candidate.totalExperience || '',
-          currentCompany: data.candidate.currentCompany || '',
-          qualification: data.candidate.qualification || '',
-          noticePeriod: data.candidate.noticePeriod || '',
-          expectedSalary: data.candidate.expectedSalary || '',
-          skills: data.candidate.skills || '',
-          hrPrivateNotes: data.candidate.hrPrivateNotes || '',
-        });
-      }
-    } catch (err) {
-      console.error('Failed to load candidate details', err);
-    } finally {
+  const fetchCandidate = async (retries = 2) => {
+    if (!candidateId || !candidateId.trim()) {
       setLoading(false);
+      if (!candidate && !initialCandidate) {
+        setFetchError('No candidate record selected.');
+      }
+      return;
+    }
+
+    if (!candidate && !initialCandidate) {
+      setLoading(true);
+    }
+    setFetchError(null);
+
+    let attempts = 0;
+    while (attempts <= retries) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+      try {
+        const res = await fetch(
+          `/api/candidates/${encodeURIComponent(candidateId.trim())}?role=${encodeURIComponent(currentRole)}`,
+          { signal: controller.signal }
+        );
+        clearTimeout(timeoutId);
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || `Server responded with status ${res.status}`);
+        }
+        const data = await res.json();
+        if (data.success && data.candidate) {
+          setCandidate(data.candidate);
+          setInterviews(data.interviews || []);
+          setTimeline(data.timeline || []);
+          setEditForm({
+            fullName: data.candidate.fullName || '',
+            phone: data.candidate.phone || '',
+            email: data.candidate.email || '',
+            address: data.candidate.address || '',
+            city: data.candidate.city || '',
+            state: data.candidate.state || '',
+            pincode: data.candidate.pincode || '',
+            position: data.candidate.position || '',
+            department: data.candidate.department || '',
+            totalExperience: data.candidate.totalExperience || '',
+            relevantExperience: data.candidate.relevantExperience || '',
+            currentCompany: data.candidate.currentCompany || '',
+            qualification: data.candidate.qualification || '',
+            noticePeriod: data.candidate.noticePeriod || '',
+            expectedSalary: data.candidate.expectedSalary || '',
+            skills: data.candidate.skills || '',
+            purpose: data.candidate.purpose || 'Interview / Job Application',
+            departmentToMeet: data.candidate.departmentToMeet || 'HR & Recruitment',
+            personToMeet: data.candidate.personToMeet || '',
+            hrPrivateNotes: data.candidate.hrPrivateNotes || '',
+          });
+          setFetchError(null);
+          setLoading(false);
+          return;
+        } else {
+          throw new Error(data.error || 'Failed to retrieve candidate profile.');
+        }
+      } catch (err: any) {
+        clearTimeout(timeoutId);
+        attempts++;
+        if (attempts <= retries) {
+          await new Promise((r) => setTimeout(r, attempts * 400));
+        } else {
+          console.warn('[Dossier Sync]', err?.name === 'AbortError' ? 'Request timed out' : err?.message || err);
+          // If we already have candidate data (e.g. from initialCandidate), don't block the screen
+          if (!candidate && !initialCandidate) {
+            setFetchError(
+              err?.name === 'AbortError'
+                ? 'Server took too long to respond. Please check your connection and retry.'
+                : err?.message || 'Failed to load candidate details.'
+            );
+          }
+          setLoading(false);
+        }
+      }
     }
   };
 
@@ -204,16 +292,47 @@ export const CandidateDossierModal: React.FC<CandidateDossierModalProps> = ({
 
   if (!candidate && loading) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-xs p-4">
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 max-w-sm w-full text-center">
           <div className="w-10 h-10 border-2 border-amber-400 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-xs text-slate-400 font-medium">Fetching Candidate Dossier...</p>
+          <p className="text-xs text-slate-300 font-medium">Fetching Candidate Dossier...</p>
         </div>
       </div>
     );
   }
 
-  if (!candidate) return null;
+  if (!candidate) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-md w-full text-center space-y-4 shadow-2xl">
+          <div className="w-12 h-12 bg-rose-500/20 text-rose-400 border border-rose-500/40 rounded-full flex items-center justify-center mx-auto">
+            <AlertCircle className="w-6 h-6" />
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-white">Candidate Details Unavailable</h3>
+            <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">
+              {fetchError || 'Unable to retrieve candidate dossier from server. The record may have been archived or network connection was interrupted.'}
+            </p>
+          </div>
+          <div className="flex gap-2 pt-2">
+            <button
+              onClick={() => fetchCandidate(1)}
+              className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs rounded-xl shadow-md transition cursor-pointer flex items-center justify-center gap-1.5"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Retry</span>
+            </button>
+            <button
+              onClick={onClose}
+              className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs rounded-xl border border-slate-700 transition cursor-pointer"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const photoToDisplay = candidate.arrivalPhoto || candidate.livePhoto;
   const photoTimestamp = formatDateTime(candidate.arrivalPhotoCapturedAt || candidate.livePhotoCapturedAt || candidate.createdAt);
@@ -235,6 +354,22 @@ export const CandidateDossierModal: React.FC<CandidateDossierModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-5 overflow-y-auto">
       <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-3xl w-full max-h-[94vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 text-slate-100">
+        {/* Sync status warning banner if background fetch failed */}
+        {fetchError && (
+          <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/30 text-amber-300 text-xs flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>Showing cached dossier snapshot. Real-time background sync is reconnecting.</span>
+            </div>
+            <button
+              onClick={() => fetchCandidate(1)}
+              className="text-amber-400 hover:text-amber-300 font-bold text-xs underline cursor-pointer"
+            >
+              Retry Sync
+            </button>
+          </div>
+        )}
+
         {/* Top Header */}
         <div className="p-5 sm:p-6 border-b border-slate-800 flex items-start justify-between bg-slate-950/80">
           <div className="flex items-center gap-4">
@@ -449,7 +584,10 @@ export const CandidateDossierModal: React.FC<CandidateDossierModalProps> = ({
 
                     <div className="flex items-center gap-2 pt-1 border-t border-slate-800/80">
                       <button
-                        onClick={() => setShowResumeModal(true)}
+                        onClick={() => {
+                          setShowResumeModal(true);
+                          window.history.pushState({}, '', `/app/candidates/${candidate.id}/resume/view`);
+                        }}
                         className="flex-1 py-1.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-300 font-bold text-xs border border-slate-700 transition cursor-pointer flex items-center justify-center gap-1"
                       >
                         <Eye className="w-3.5 h-3.5" />
@@ -494,7 +632,10 @@ export const CandidateDossierModal: React.FC<CandidateDossierModalProps> = ({
 
                     <div className="flex items-center gap-2 pt-1 border-t border-slate-800/80">
                       <button
-                        onClick={() => setShowGovIdModal(true)}
+                        onClick={() => {
+                          setShowGovIdModal(true);
+                          window.history.pushState({}, '', `/app/candidates/${candidate.id}/government-id/view`);
+                        }}
                         className="flex-1 py-1.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-cyan-300 font-bold text-xs border border-slate-700 transition cursor-pointer flex items-center justify-center gap-1"
                       >
                         <Eye className="w-3.5 h-3.5" />
@@ -665,6 +806,15 @@ export const CandidateDossierModal: React.FC<CandidateDossierModalProps> = ({
                   />
                 </div>
                 <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Relevant Experience</label>
+                  <input
+                    type="text"
+                    value={editForm.relevantExperience}
+                    onChange={(e) => setEditForm({ ...editForm, relevantExperience: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white"
+                  />
+                </div>
+                <div>
                   <label className="block text-slate-300 font-semibold mb-1">Current Company</label>
                   <input
                     type="text"
@@ -697,6 +847,62 @@ export const CandidateDossierModal: React.FC<CandidateDossierModalProps> = ({
                     type="text"
                     value={editForm.expectedSalary}
                     onChange={(e) => setEditForm({ ...editForm, expectedSalary: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-slate-300 font-semibold mb-1">Street Address</label>
+                  <input
+                    type="text"
+                    value={editForm.address}
+                    onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white"
+                  />
+                </div>
+                <div className="grid grid-cols-3 gap-2 col-span-2">
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1">City</label>
+                    <input
+                      type="text"
+                      value={editForm.city}
+                      onChange={(e) => setEditForm({ ...editForm, city: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1">State</label>
+                    <input
+                      type="text"
+                      value={editForm.state}
+                      onChange={(e) => setEditForm({ ...editForm, state: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1">Pincode</label>
+                    <input
+                      type="text"
+                      value={editForm.pincode}
+                      onChange={(e) => setEditForm({ ...editForm, pincode: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Purpose of Visit</label>
+                  <input
+                    type="text"
+                    value={editForm.purpose}
+                    onChange={(e) => setEditForm({ ...editForm, purpose: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Host / Person to Meet</label>
+                  <input
+                    type="text"
+                    value={editForm.personToMeet}
+                    onChange={(e) => setEditForm({ ...editForm, personToMeet: e.target.value })}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white"
                   />
                 </div>
@@ -857,13 +1063,14 @@ export const CandidateDossierModal: React.FC<CandidateDossierModalProps> = ({
             <div className="w-12 h-12 bg-rose-500/20 text-rose-400 border border-rose-500/40 rounded-full flex items-center justify-center mx-auto">
               <Trash2 className="w-6 h-6" />
             </div>
-            <div className="text-center space-y-1">
+            <div className="text-center space-y-1.5">
               <h3 className="text-lg font-bold text-white">Delete Candidate?</h3>
               <p className="text-xs text-slate-300 font-medium">
                 Candidate: <strong className="text-amber-400">{candidate.fullName}</strong>
               </p>
-              <p className="text-[11px] text-slate-400">
-                This action will archive the candidate record and associated operational data according to retention policy while preserving audit history.
+              <p className="text-xs text-slate-400 leading-relaxed">
+                This action will remove/archive the candidate record<br className="hidden sm:inline" />
+                {' '}and associated operational data according to retention policy.
               </p>
             </div>
 
@@ -901,12 +1108,30 @@ export const CandidateDossierModal: React.FC<CandidateDossierModalProps> = ({
 
       {/* Resume Modal */}
       {showResumeModal && (
-        <ResumeDocumentModal candidate={candidate} currentRole={currentRole} onClose={() => setShowResumeModal(false)} />
+        <ResumeDocumentModal
+          candidate={candidate}
+          currentRole={currentRole}
+          onClose={() => {
+            setShowResumeModal(false);
+            if (window.location.pathname.includes('/view')) {
+              window.history.pushState({}, '', '/');
+            }
+          }}
+        />
       )}
 
       {/* Government ID Modal */}
       {showGovIdModal && (
-        <GovernmentIdModal candidate={candidate} currentRole={currentRole} onClose={() => setShowGovIdModal(false)} />
+        <GovernmentIdModal
+          candidate={candidate}
+          currentRole={currentRole}
+          onClose={() => {
+            setShowGovIdModal(false);
+            if (window.location.pathname.includes('/view')) {
+              window.history.pushState({}, '', '/');
+            }
+          }}
+        />
       )}
 
       {/* Reception Photo Modal */}

@@ -1,13 +1,57 @@
-export type UserRole = 'HR' | 'ADMIN' | 'CEO' | 'INTERVIEWER' | 'RECEPTION' | 'PANTRY';
+export type UserRole =
+  | 'HR'
+  | 'ADMIN'
+  | 'CEO'
+  | 'CO_FOUNDER'
+  | 'INTERVIEWER'
+  | 'RECEPTION'
+  | 'PANTRY'
+  | 'EMPLOYEE'
+  | 'MANAGER'
+  | 'VISITOR_COORDINATOR'
+  | 'FACILITIES'
+  | 'SECURITY'
+  | 'SUPER_ADMIN';
 
 export interface User {
   id: string;
+  userId?: string;
   name: string;
   email: string;
+  username?: string;
+  passwordHash?: string;
   role: UserRole;
+  designation?: string;
   department: string;
+  permissions?: string[];
+  isActive: boolean;
   avatar?: string;
   phone?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  lastLoginAt?: string;
+}
+
+export type PasswordResetStatus = 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED' | 'USED' | 'EXPIRED';
+
+export interface PasswordResetRequest {
+  id: string;
+  userId: string;
+  userEmail: string;
+  userName: string;
+  userRole: UserRole;
+  token: string;
+  status: PasswordResetStatus;
+  requestedAt: string;
+  expiresAt: string;
+  approvedAt?: string;
+  approvedBy?: string;
+  approvedByName?: string;
+  rejectionReason?: string;
+  completedAt?: string;
+  ipAddress?: string;
+  deliveryMethod: 'EMAIL_SIMULATION' | 'ADMIN_APPROVAL_LINK' | 'DIRECT_TOKEN';
+  resetLink?: string;
 }
 
 export type CandidateStatus =
@@ -179,6 +223,11 @@ export interface Candidate {
   interviewerFeedbackPrivate?: string;
   internalHiringDecisionNotes?: string;
   managementNotes?: string;
+  isDeleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
+  deletedByName?: string;
+  deletionReason?: string;
   status: CandidateStatus;
   currentLocation: string;
   arrivalTime?: string;
@@ -214,18 +263,46 @@ export interface Interview {
 
 export type RoomStatus = 'AVAILABLE' | 'ASSIGNED' | 'OCCUPIED' | 'MAINTENANCE' | 'NEEDS_CLEANING';
 
+export type RoomType = 'CABIN' | 'MEETING_ROOM' | 'WAITING_AREA' | 'POD' | 'OTHER' | 'EXECUTIVE_BOARDROOM' | 'STANDARD_MEETING' | 'INTERVIEW_POD';
+
 export interface Room {
   id: string;
+  roomId?: string;
   name: string;
-  type: 'EXECUTIVE_BOARDROOM' | 'STANDARD_MEETING' | 'INTERVIEW_POD';
+  roomName?: string;
+  type: RoomType;
+  roomType?: RoomType;
   capacity: number;
   floor: string;
   status: RoomStatus;
+  isActive: boolean;
+  preferredFor?: string;
   currentCandidateId?: string;
   currentCandidateName?: string;
   currentInterviewId?: string;
   assignedInterviewerName?: string;
   lastSanitizedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CandidateChangeRequest {
+  id: string;
+  candidateId: string;
+  candidateName: string;
+  requestedByUserId: string;
+  requestedByUserName: string;
+  requestedByUserRole: UserRole;
+  requestedField: string;
+  currentValue: string;
+  suggestedValue: string;
+  reason: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  createdAt: string;
+  resolvedAt?: string;
+  resolvedByUserId?: string;
+  resolvedByUserName?: string;
+  resolutionNotes?: string;
 }
 
 export type NotificationPriority = 'CRITICAL' | 'HIGH' | 'NORMAL' | 'LOW';
@@ -268,6 +345,7 @@ export interface PantryTask {
   createdAt: string;
   completedAt?: string;
   completedBy?: string;
+  assignedSteward?: string;
 }
 
 export type ActorType = 'SYSTEM' | 'USER';
@@ -286,14 +364,18 @@ export interface TimelineEvent {
 export interface AuditLog {
   id: string;
   timestamp: string;
-  actorType: ActorType;
+  actorType?: ActorType;
+  actorUserId?: string;
   actorName: string;
   actorRole?: string;
   action: string;
+  targetType?: string;
+  targetId?: string;
   details: string;
   entityId?: string;
   entityType?: string;
   ipAddress?: string;
+  metadata?: Record<string, any>;
 }
 
 export type SessionStatus = 'ACTIVE' | 'STARTED' | 'SUBMITTING' | 'COMPLETED' | 'SUBMITTED' | 'EXPIRED' | 'CANCELLED';
@@ -317,6 +399,7 @@ export interface CheckInSession {
   openedAt?: string;
   submittedAt?: string;
   completedAt?: string;
+  lockedAt?: string;
 }
 
 export type VisitorType = 'CANDIDATE' | 'CLIENT' | 'VENDOR' | 'WALK_IN';
@@ -365,3 +448,47 @@ export interface OfficeSettings {
   qrSessionExpiryMinutes?: number;
   fieldVisibility: Record<UserRole, RoleFieldVisibility>;
 }
+
+export type PersonalTaskPriority = 'CRITICAL' | 'HIGH' | 'NORMAL' | 'LOW';
+export type PersonalTaskStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
+
+export interface PersonalTask {
+  id: string;
+  userId: string;
+  title: string;
+  description: string;
+  category: 'INTERVIEW' | 'CANDIDATE_REVIEW' | 'ROOM_ALLOCATION' | 'ADMIN_APPROVAL' | 'FACILITY_CHECK' | 'GENERAL';
+  status: PersonalTaskStatus;
+  priority: PersonalTaskPriority;
+  relatedCandidateId?: string;
+  relatedCandidateName?: string;
+  relatedInterviewId?: string;
+  dueDate?: string;
+  completedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PersonalDashboardData {
+  user: User;
+  role: UserRole;
+  effectivePermissions: string[];
+  personalScope: {
+    myCandidatesCount: number;
+    myWaitingCount: number;
+    myInterviewsCount: number;
+    myPendingTasksCount: number;
+    myUnreadNotifsCount: number;
+  };
+  myTasks: PersonalTask[];
+  myInterviews: Interview[];
+  myCandidates: Candidate[];
+  myNotifications: Notification[];
+  roleAuthorizedData?: {
+    totalRooms: number;
+    occupiedRooms: number;
+    waitingTotal: number;
+    activeTotal: number;
+  };
+}
+
