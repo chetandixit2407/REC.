@@ -1,0 +1,367 @@
+export type UserRole = 'HR' | 'ADMIN' | 'CEO' | 'INTERVIEWER' | 'RECEPTION' | 'PANTRY';
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  department: string;
+  avatar?: string;
+  phone?: string;
+}
+
+export type CandidateStatus =
+  | 'SCHEDULED'
+  | 'ARRIVED'
+  | 'WAITING'
+  | 'ROOM_ASSIGNED'
+  | 'IN_INTERVIEW'
+  | 'COMPLETED'
+  | 'CHECKED_OUT'
+  | 'REJECTED'
+  | 'OFFERED';
+
+export type InterviewStage =
+  | 'Round 1 - Technical Assessment'
+  | 'Round 2 - HR & Culture Fit'
+  | 'Round 3 - Leadership & Commercial'
+  | 'Final Executive Review';
+
+export type InterviewStatus =
+  | 'SCHEDULED'
+  | 'CANDIDATE_ARRIVED'
+  | 'ROOM_ASSIGNED'
+  | 'INTERVIEW_STARTED'
+  | 'INTERVIEW_COMPLETED'
+  | 'CANCELLED';
+
+export type InterviewOutcome = 'PENDING' | 'NEXT_INTERVIEW' | 'HOLD' | 'REJECTED' | 'SELECTED';
+
+export interface CandidateResumeMetadata {
+  id: string;
+  candidateId: string;
+  originalFileName: string;
+  mimeType: string;
+  fileSize: string;
+  storageKey?: string;
+  uploadedAt: string;
+  uploadedBy?: string;
+}
+
+export interface CandidatePhotoMetadata {
+  photoUrl?: string;
+  capturedAt: string;
+  capturedBy: string;
+  capturedByName?: string;
+  captureSource: 'RECEPTION_LIVE_CAMERA' | 'CANDIDATE_SELF_REGISTRATION';
+}
+
+export type GovernmentIdType =
+  | 'AADHAAR'
+  | 'PAN'
+  | 'DRIVING_LICENSE'
+  | 'PASSPORT'
+  | 'VOTER_ID'
+  | 'OTHER';
+
+export type VerificationStatus = 'PENDING' | 'PROCESSING' | 'VERIFIED' | 'NEEDS_REVIEW' | 'INVALID';
+
+export interface GovernmentIdDocument {
+  id: string;
+  candidateId: string;
+  idType: GovernmentIdType;
+  idTypeName: string;
+  maskedIdNumber: string;
+  rawIdNumber?: string;
+  storageKey?: string;
+  originalFileName: string;
+  mimeType: string;
+  fileSize: string;
+  uploadedAt: string;
+  verificationStatus: VerificationStatus;
+  verificationMethod: 'AUTOMATED_OCR_RULE_ENGINE' | 'MANUAL_RECEPTION_VERIFIED';
+  documentDataUrl?: string;
+  validationErrors?: string[];
+  extractedName?: string;
+  nameMatchStatus?: 'NAME_MATCH' | 'NAME_MISMATCH' | 'NOT_FOUND' | 'PENDING';
+  formatValid?: boolean;
+}
+
+export type ValidationOverallStatus = 'READY_FOR_RECEPTION' | 'NEEDS_REVIEW' | 'INVALID';
+
+export interface ValidationCheckItem {
+  id: string;
+  name: string;
+  category: 'PERSONAL' | 'PROFESSIONAL' | 'RESUME' | 'GOV_ID' | 'CONSISTENCY';
+  status: 'PASSED' | 'NEEDS_REVIEW' | 'INVALID' | 'WARNING';
+  details: string;
+  expected?: string;
+  actual?: string;
+}
+
+export interface CandidateValidationResult {
+  id: string;
+  candidateId: string;
+  overallStatus: ValidationOverallStatus;
+  validationTimestamp: string;
+  checksPerformed: number;
+  checksPassed: number;
+  checksFlagged: number;
+  systemActor: string;
+  summary: string;
+  checks: ValidationCheckItem[];
+  resumeExtractedData?: {
+    name?: string;
+    nameMatch?: 'MATCH' | 'PARTIAL_MATCH' | 'MISMATCH' | 'NOT_FOUND';
+    email?: string;
+    emailMatch?: 'MATCH' | 'MISMATCH' | 'NOT_FOUND';
+    phone?: string;
+    phoneMatch?: 'MATCH' | 'MISMATCH' | 'NOT_FOUND';
+    totalExperience?: string;
+    company?: string;
+    designation?: string;
+  };
+  governmentIdExtractedData?: {
+    idType: GovernmentIdType;
+    maskedIdNumber: string;
+    extractedName?: string;
+    nameMatch?: 'NAME_MATCH' | 'NAME_MISMATCH' | 'NOT_FOUND';
+    formatValid?: boolean;
+    dob?: string;
+  };
+}
+
+export interface Candidate {
+  id: string;
+  fullName: string;
+  phone: string;
+  email: string;
+  address: string;
+  city: string;
+  state: string;
+  pincode: string;
+  position: string;
+  department: string;
+  totalExperience: string;
+  relevantExperience: string;
+  currentCompany: string;
+  qualification: string;
+  noticePeriod: string;
+  expectedSalary: string;
+  referralSource: string;
+  skills?: string;
+  departmentToMeet?: string;
+  personToMeet?: string;
+  howDidYouHear?: string;
+  purpose?: string;
+  visitType?: 'WALK_IN' | 'SCHEDULED_INTERVIEW' | 'CLIENT_MEETING' | 'VENDOR';
+  appointmentTime?: string;
+  interviewerId?: string;
+  interviewerName?: string;
+  interviewRound?: string;
+  livePhoto?: string;
+  livePhotoCapturedAt?: string;
+  livePhotoCapturedBy?: string;
+  arrivalPhoto?: string; // Reception desk verified live photo
+  arrivalPhotoCapturedAt?: string;
+  arrivalPhotoCapturedBy?: string;
+  arrivalPhotoCapturedByName?: string;
+  photoMetadata?: CandidatePhotoMetadata;
+  resumeUrl?: string;
+  resumeFileName?: string;
+  resumeFileSize?: string;
+  resumeMimeType?: string;
+  resumeUploadedAt?: string;
+  resumeMetadata?: CandidateResumeMetadata;
+  governmentId?: GovernmentIdDocument;
+  validationResult?: CandidateValidationResult;
+  hrPrivateNotes?: string;
+  interviewerFeedbackPrivate?: string;
+  internalHiringDecisionNotes?: string;
+  managementNotes?: string;
+  status: CandidateStatus;
+  currentLocation: string;
+  arrivalTime?: string;
+  checkOutTime?: string;
+  totalDurationMinutes?: number;
+  appointmentId?: string;
+  currentInterviewId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Interview {
+  id: string;
+  candidateId: string;
+  candidateName: string;
+  position: string;
+  roundName: InterviewStage | string;
+  interviewerId: string;
+  interviewerName: string;
+  scheduledTime: string;
+  status: InterviewStatus;
+  roomId?: string;
+  roomName?: string;
+  startedAt?: string;
+  completedAt?: string;
+  outcome?: InterviewOutcome;
+  interviewerFeedback?: string;
+  nextInterviewerId?: string;
+  nextRoundName?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type RoomStatus = 'AVAILABLE' | 'ASSIGNED' | 'OCCUPIED' | 'MAINTENANCE' | 'NEEDS_CLEANING';
+
+export interface Room {
+  id: string;
+  name: string;
+  type: 'EXECUTIVE_BOARDROOM' | 'STANDARD_MEETING' | 'INTERVIEW_POD';
+  capacity: number;
+  floor: string;
+  status: RoomStatus;
+  currentCandidateId?: string;
+  currentCandidateName?: string;
+  currentInterviewId?: string;
+  assignedInterviewerName?: string;
+  lastSanitizedAt?: string;
+}
+
+export type NotificationPriority = 'CRITICAL' | 'HIGH' | 'NORMAL' | 'LOW';
+
+export interface NotificationAction {
+  label: string;
+  actionKey: string;
+  payload?: Record<string, any>;
+}
+
+export interface Notification {
+  id: string;
+  recipientRole: UserRole;
+  recipientUserId?: string;
+  title: string;
+  message: string;
+  priority: NotificationPriority;
+  eventType: string;
+  entityId: string;
+  entityType: 'CANDIDATE' | 'INTERVIEW' | 'ROOM' | 'PANTRY_TASK' | 'VISITOR';
+  read: boolean;
+  createdAt: string;
+  actionButtons?: NotificationAction[];
+  payload?: Record<string, any>; // Role-filtered payload
+}
+
+export type PantryTaskType = 'ROOM_PREP' | 'WATER_BEVERAGE' | 'ROOM_RESET' | 'CUSTOM';
+export type PantryTaskStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
+
+export interface PantryTask {
+  id: string;
+  roomId: string;
+  roomName: string;
+  candidateName: string;
+  taskType: PantryTaskType;
+  description: string;
+  requiredItems: string[];
+  priority: NotificationPriority;
+  status: PantryTaskStatus;
+  createdAt: string;
+  completedAt?: string;
+  completedBy?: string;
+}
+
+export type ActorType = 'SYSTEM' | 'USER';
+
+export interface TimelineEvent {
+  id: string;
+  candidateId: string;
+  timestamp: string;
+  actorType: ActorType;
+  actorName: string;
+  eventType: string;
+  description: string;
+  metadata?: Record<string, any>;
+}
+
+export interface AuditLog {
+  id: string;
+  timestamp: string;
+  actorType: ActorType;
+  actorName: string;
+  actorRole?: string;
+  action: string;
+  details: string;
+  entityId?: string;
+  entityType?: string;
+  ipAddress?: string;
+}
+
+export type SessionStatus = 'ACTIVE' | 'STARTED' | 'SUBMITTING' | 'COMPLETED' | 'SUBMITTED' | 'EXPIRED' | 'CANCELLED';
+
+export interface CheckInSession {
+  id: string;
+  token: string;
+  qrType: 'APPOINTMENT' | 'GENERAL_RECEPTION' | 'NEW_CANDIDATE_REGISTRATION';
+  source?: 'GENERAL_WCR_QR' | 'SCHEDULED_APPOINTMENT';
+  candidateId?: string;
+  candidateName?: string;
+  position?: string;
+  department?: string;
+  appointmentTime?: string;
+  interviewerId?: string;
+  interviewerName?: string;
+  interviewRound?: string;
+  status: SessionStatus;
+  expiresAt: string;
+  createdAt: string;
+  openedAt?: string;
+  submittedAt?: string;
+  completedAt?: string;
+}
+
+export type VisitorType = 'CANDIDATE' | 'CLIENT' | 'VENDOR' | 'WALK_IN';
+
+export interface Visitor {
+  id: string;
+  fullName: string;
+  phone: string;
+  email: string;
+  company?: string;
+  visitorType: VisitorType;
+  hostName: string;
+  hostDepartment: string;
+  purpose: string;
+  status: 'CHECKED_IN' | 'MEETING' | 'CHECKED_OUT';
+  roomAssigned?: string;
+  checkInTime: string;
+  checkOutTime?: string;
+  photo?: string;
+}
+
+export interface RoleFieldVisibility {
+  candidateName: boolean;
+  phone: boolean;
+  email: boolean;
+  address: boolean;
+  resume: boolean;
+  governmentId: boolean;
+  validationResults: boolean;
+  livePhoto: boolean;
+  hrNotes: boolean;
+  interviewStatus: boolean;
+  room: boolean;
+  pantryTask: boolean;
+  salary: boolean;
+}
+
+export interface OfficeSettings {
+  autoAssignPantryOnRoom: boolean;
+  pantryWaterRequired: boolean;
+  requireLivePhoto: boolean;
+  requireResume: boolean;
+  requireGovernmentId: boolean;
+  allowedGovernmentIdTypes: GovernmentIdType[];
+  allowedUploadFormats: string[];
+  qrSessionExpiryMinutes?: number;
+  fieldVisibility: Record<UserRole, RoleFieldVisibility>;
+}
