@@ -103,6 +103,10 @@ export default function App() {
     routePath.startsWith('/register/') ||
     routePath.startsWith('/candidate/register');
 
+  const isDashboardRoute =
+    routePath === '/dashboard' ||
+    routePath.startsWith('/dashboard/');
+
   const isCompleteRoute =
     routePath === '/registration-complete' ||
     routePath === '/thank-you' ||
@@ -528,6 +532,75 @@ export default function App() {
           setRoutePath('/');
         }}
       />
+    );
+  }
+
+  // ==========================================
+  // UNCONNECTED / UNAUTHENTICATED DASHBOARD ROUTE GUARD
+  // ==========================================
+  if (isDashboardRoute && !currentUser) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4 font-sans">
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-6 shadow-2xl space-y-4">
+          <div className="flex items-center gap-2 pb-2 border-b border-slate-800">
+            <Shield className="w-5 h-5 text-rose-400" />
+            <div>
+              <h3 className="text-base font-bold text-white">Access Denied</h3>
+              <p className="text-[11px] text-slate-400">Staff Authentication Required</p>
+            </div>
+          </div>
+          <p className="text-xs text-slate-300">
+            You must authenticate with a White Collar Realty staff account to access confidential dashboard operations.
+          </p>
+
+          {loginError && (
+            <div className="p-2.5 bg-rose-500/15 border border-rose-500/40 rounded-xl text-rose-300 text-xs">
+              {loginError}
+            </div>
+          )}
+
+          <form onSubmit={handleStaffLogin} className="space-y-3 text-xs">
+            <div>
+              <label className="block text-slate-300 font-semibold mb-1">Staff Email</label>
+              <input
+                type="email"
+                value={loginEmail}
+                onChange={(e) => setLoginEmail(e.target.value)}
+                placeholder="e.g. reception@whitecollarrealty.com"
+                className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-slate-300 font-semibold mb-1">Password</label>
+              <input
+                type="password"
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs"
+                required
+              />
+            </div>
+            <button
+              type="submit"
+              className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold rounded-xl shadow-lg transition cursor-pointer"
+            >
+              Sign In to Staff Console
+            </button>
+          </form>
+          <div className="pt-2 text-center">
+            <button
+              onClick={() => {
+                window.history.pushState({}, '', '/register');
+                setRoutePath('/register');
+              }}
+              className="text-xs text-slate-400 hover:text-amber-400 underline cursor-pointer"
+            >
+              &larr; Candidate Self-Registration (/register)
+            </button>
+          </div>
+        </div>
+      </div>
     );
   }
 

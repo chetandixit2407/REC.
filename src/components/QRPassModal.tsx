@@ -17,6 +17,11 @@ import {
   UserPlus,
 } from 'lucide-react';
 import type { CheckInSession } from '../types/index.ts';
+import {
+  getPublicAppOrigin,
+  getCandidateRegistrationUrl,
+  getCandidateCheckInUrl,
+} from '../utils/publicOrigin.ts';
 
 interface QRPassModalProps {
   onClose: () => void;
@@ -53,8 +58,7 @@ export const QRPassModal: React.FC<QRPassModalProps> = ({
   }, []);
 
   const generateGeneralQR = () => {
-    const origin = window.location.origin;
-    const generalUrl = `${origin}/register`;
+    const generalUrl = getCandidateRegistrationUrl();
 
     QRCode.toDataURL(
       generalUrl,
@@ -94,8 +98,7 @@ export const QRPassModal: React.FC<QRPassModalProps> = ({
   // Generate QR for selected scheduled session
   useEffect(() => {
     if (!selectedSession) return;
-    const origin = window.location.origin;
-    const scanUrl = `${origin}/candidate/check-in/${selectedSession.token}`;
+    const scanUrl = getCandidateCheckInUrl(selectedSession.token);
 
     QRCode.toDataURL(
       scanUrl,
@@ -152,10 +155,10 @@ export const QRPassModal: React.FC<QRPassModalProps> = ({
     }
   };
 
-  const currentOrigin = window.location.origin;
-  const generalScanUrl = `${currentOrigin}/register`;
+  const publicOrigin = getPublicAppOrigin();
+  const generalScanUrl = getCandidateRegistrationUrl();
   const scheduledScanUrl = selectedSession
-    ? `${currentOrigin}/candidate/check-in/${selectedSession.token}`
+    ? getCandidateCheckInUrl(selectedSession.token)
     : '';
 
   // Standee Printable View

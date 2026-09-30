@@ -128,7 +128,7 @@
       "username": "nisha.hr",
       "passwordHash": "wcr_office_ops_salt:443ecebefce3033bb58d041de2380c79c1552478796f39a579f1fdcfe90f881f",
       "role": "HR",
-      "designation": "Lead HR & Talent Acquisition",
+      "designation": "Senior HR Manager",
       "department": "HR",
       "permissions": [
         "FULL_ACCESS",
@@ -943,29 +943,189 @@
     },
     {
       "id": "cand-1",
-      "fullName": "Rahul Sharma",
+      "fullName": "Vikram Malhotra",
       "phone": "+91 98112 34567",
-      "email": "rahul.sharma@example.com",
+      "email": "vikram.malhotra@gmail.com",
       "address": "B-402, Golf Course Road",
       "city": "Gurugram",
       "state": "Haryana",
       "pincode": "122002",
-      "position": "Sales Manager - Luxury Residential",
-      "department": "Sales & Business Development",
-      "totalExperience": "6.5 Years",
+      "position": "Senior Real Estate Consultant",
+      "department": "Luxury Sales",
+      "totalExperience": "5 Years",
       "relevantExperience": "5 Years in Prime Real Estate",
-      "currentCompany": "DLF Crest Real Estate",
-      "qualification": "MBA in Marketing",
+      "currentCompany": "DLF Properties",
+      "qualification": "MBA",
       "noticePeriod": "15 Days",
-      "expectedSalary": "₹18,00,000 p.a.",
+      "expectedSalary": "18 LPA",
       "referralSource": "LinkedIn Job Portal",
-      "status": "ROOM_ASSIGNED",
-      "currentLocation": "Meeting Room 1",
+      "status": "ARRIVED",
+      "currentLocation": "Reception / Waiting Lounge",
       "appointmentId": "appt-1",
-      "currentInterviewId": "intv-1",
+      "currentInterviewId": "intv-1790766507893-j71d",
       "createdAt": "2026-09-30T03:15:36.451Z",
-      "updatedAt": "2026-09-30T05:15:44.865Z",
-      "arrivalTime": "2026-09-30T05:15:44.865Z"
+      "updatedAt": "2026-09-30T11:08:27.890Z",
+      "arrivalTime": "2026-09-30T11:08:27.890Z",
+      "governmentId": {
+        "id": "govid-1790766507892",
+        "candidateId": "cand-1",
+        "idType": "AADHAAR",
+        "idTypeName": "Aadhaar Card",
+        "maskedIdNumber": "XXXX XXXX 1100",
+        "rawIdNumber": "554433221100",
+        "originalFileName": "Vikram_Aadhaar.pdf",
+        "mimeType": "application/pdf",
+        "fileSize": "0 KB",
+        "uploadedAt": "2026-09-30T11:08:27.890Z",
+        "verificationStatus": "VERIFIED",
+        "verificationMethod": "AUTOMATED_OCR_RULE_ENGINE",
+        "documentDataUrl": "data:application/pdf;base64,JVBERi0xLjQKJ",
+        "extractedName": "Vikram Malhotra",
+        "nameMatchStatus": "NAME_MATCH",
+        "formatValid": true,
+        "storageKey": "/app/applet/data/gov_ids/cand-1-govid.bin"
+      },
+      "validationResult": {
+        "id": "val-1790766507892-ai7k",
+        "candidateId": "cand-1",
+        "overallStatus": "READY_FOR_RECEPTION",
+        "validationTimestamp": "2026-09-30T11:08:27.891Z",
+        "checksPerformed": 10,
+        "checksPassed": 10,
+        "checksFlagged": 0,
+        "systemActor": "WCR Automated Validation Engine v2.4",
+        "summary": "All mandatory candidate, resume, and government ID validations passed successfully.",
+        "checks": [
+          {
+            "id": "chk-name",
+            "name": "Full Name Format",
+            "category": "PERSONAL",
+            "status": "PASSED",
+            "details": "Valid candidate name provided (Vikram Malhotra).",
+            "expected": "Min 3 alphanumeric characters",
+            "actual": "Vikram Malhotra"
+          },
+          {
+            "id": "chk-phone",
+            "name": "Mobile Phone Verification",
+            "category": "PERSONAL",
+            "status": "PASSED",
+            "details": "Valid contact number provided (+91 98112 34567).",
+            "expected": "10-digit mobile with country code",
+            "actual": "+91 98112 34567"
+          },
+          {
+            "id": "chk-email",
+            "name": "Email Address Format",
+            "category": "PERSONAL",
+            "status": "PASSED",
+            "details": "Standard corporate/personal email format confirmed (vikram.malhotra@gmail.com).",
+            "expected": "name@domain.com",
+            "actual": "vikram.malhotra@gmail.com"
+          },
+          {
+            "id": "chk-position",
+            "name": "Designation / Role Applied",
+            "category": "PROFESSIONAL",
+            "status": "PASSED",
+            "details": "Designation specified: Senior Real Estate Consultant.",
+            "expected": "Specified position",
+            "actual": "Senior Real Estate Consultant"
+          },
+          {
+            "id": "chk-exp-company",
+            "name": "Experience & Company Consistency",
+            "category": "CONSISTENCY",
+            "status": "PASSED",
+            "details": "Experience of 5 Years matches company profile (DLF Properties)."
+          },
+          {
+            "id": "chk-resume-upload",
+            "name": "Resume Document Upload",
+            "category": "RESUME",
+            "status": "PASSED",
+            "details": "Resume attached (Vikram_Malhotra_Resume.pdf). Persistent storage assigned.",
+            "actual": "Vikram_Malhotra_Resume.pdf"
+          },
+          {
+            "id": "chk-resume-name-match",
+            "name": "Resume Identity Cross-Check",
+            "category": "RESUME",
+            "status": "PASSED",
+            "details": "Resume dossier aligns with candidate identity (Vikram Malhotra).",
+            "actual": "MATCH"
+          },
+          {
+            "id": "chk-govid-format",
+            "name": "Aadhaar Card Number Format",
+            "category": "GOV_ID",
+            "status": "PASSED",
+            "details": "Aadhaar Card format verified: XXXX XXXX 1100.",
+            "expected": "Standard Aadhaar Card format",
+            "actual": "XXXX XXXX 1100"
+          },
+          {
+            "id": "chk-govid-upload",
+            "name": "Government ID Document Upload",
+            "category": "GOV_ID",
+            "status": "PASSED",
+            "details": "Aadhaar Card document successfully uploaded and persistently stored (Vikram_Aadhaar.pdf).",
+            "actual": "Vikram_Aadhaar.pdf"
+          },
+          {
+            "id": "chk-govid-name-match",
+            "name": "Government ID Name Consistency",
+            "category": "GOV_ID",
+            "status": "PASSED",
+            "details": "Automated OCR format extraction verified: Name 'Vikram Malhotra' matches Government ID record. (Note: Does not replace official government database lookup).",
+            "expected": "Vikram Malhotra",
+            "actual": "Vikram Malhotra"
+          }
+        ],
+        "resumeExtractedData": {
+          "name": "Vikram Malhotra",
+          "nameMatch": "MATCH",
+          "email": "vikram.malhotra@gmail.com",
+          "emailMatch": "MATCH",
+          "phone": "+91 98112 34567",
+          "phoneMatch": "MATCH",
+          "totalExperience": "5 Years",
+          "company": "DLF Properties",
+          "designation": "Senior Real Estate Consultant"
+        },
+        "governmentIdExtractedData": {
+          "idType": "AADHAAR",
+          "maskedIdNumber": "XXXX XXXX 1100",
+          "extractedName": "Vikram Malhotra",
+          "nameMatch": "NAME_MATCH",
+          "formatValid": true
+        }
+      },
+      "livePhoto": "data:image/jpeg;base64,/9j/4AAQSkZJRg==",
+      "livePhotoCapturedAt": "2026-09-30T11:08:27.890Z",
+      "livePhotoCapturedBy": "Candidate Self-Registration",
+      "photoMetadata": {
+        "photoUrl": "data:image/jpeg;base64,/9j/4AAQSkZJRg==",
+        "capturedAt": "2026-09-30T11:08:27.890Z",
+        "capturedBy": "CANDIDATE",
+        "capturedByName": "Vikram Malhotra",
+        "captureSource": "CANDIDATE_SELF_REGISTRATION"
+      },
+      "resumeUrl": "data:application/pdf;base64,JVBERi0xLjQKJ",
+      "resumeFileName": "Vikram_Malhotra_Resume.pdf",
+      "resumeFileSize": "0 KB",
+      "resumeMimeType": "application/pdf",
+      "resumeUploadedAt": "2026-09-30T11:08:27.890Z",
+      "resumeMetadata": {
+        "id": "res-1790766507893",
+        "candidateId": "cand-1",
+        "originalFileName": "Vikram_Malhotra_Resume.pdf",
+        "mimeType": "application/pdf",
+        "fileSize": "0 KB",
+        "storageKey": "/app/applet/data/resumes/cand-1-resume.bin",
+        "uploadedAt": "2026-09-30T11:08:27.890Z",
+        "uploadedBy": "Vikram Malhotra"
+      }
     },
     {
       "id": "cand-2",
@@ -995,6 +1155,19 @@
     }
   ],
   "interviews": [
+    {
+      "id": "intv-1790766507893-j71d",
+      "candidateId": "cand-1",
+      "candidateName": "Vikram Malhotra",
+      "position": "Senior Real Estate Consultant",
+      "roundName": "Round 1 - Technical Assessment",
+      "interviewerId": "usr-int-1",
+      "interviewerName": "Nisha Verma",
+      "scheduledTime": "Walk-in / Immediate",
+      "status": "CANDIDATE_ARRIVED",
+      "createdAt": "2026-09-30T11:08:27.890Z",
+      "updatedAt": "2026-09-30T11:08:27.890Z"
+    },
     {
       "id": "intv-1790752702322-kmdy",
       "candidateId": "cand-1790752702321-of0s",
@@ -1287,6 +1460,182 @@
     }
   ],
   "notifications": [
+    {
+      "id": "notif-1790766507948-hr",
+      "recipientRole": "HR",
+      "title": "Candidate Arrived for Interview",
+      "message": "Vikram Malhotra has arrived for Senior Real Estate Consultant (Round 1 - Technical Assessment). Scheduled: Walk-in / Immediate.",
+      "priority": "HIGH",
+      "eventType": "CANDIDATE_ARRIVED",
+      "entityId": "cand-1",
+      "entityType": "CANDIDATE",
+      "read": false,
+      "createdAt": "2026-09-30T11:08:27.920Z",
+      "actionButtons": [
+        {
+          "label": "Assign Room",
+          "actionKey": "ASSIGN_ROOM",
+          "payload": {
+            "candidateId": "cand-1",
+            "interviewId": "intv-1790766507893-j71d"
+          }
+        },
+        {
+          "label": "View Profile",
+          "actionKey": "VIEW_CANDIDATE",
+          "payload": {
+            "candidateId": "cand-1"
+          }
+        }
+      ],
+      "payload": {
+        "candidateName": "Vikram Malhotra",
+        "position": "Senior Real Estate Consultant",
+        "stage": "Round 1 - Technical Assessment",
+        "interviewer": "Nisha Verma",
+        "scheduled": "Walk-in / Immediate",
+        "arrived": "11:08 AM",
+        "phone": "+91 98112 34567",
+        "email": "vikram.malhotra@gmail.com",
+        "experience": "5 Years",
+        "currentLocation": "Reception / Waiting Lounge",
+        "hasPhoto": true,
+        "hasResume": true,
+        "livePhoto": "data:image/jpeg;base64,/9j/4AAQSkZJRg==",
+        "resumeFileName": "Vikram_Malhotra_Resume.pdf"
+      }
+    },
+    {
+      "id": "notif-1790766507948-admin",
+      "recipientRole": "ADMIN",
+      "title": "Candidate Arrived",
+      "message": "Vikram Malhotra checked in for Senior Real Estate Consultant. Status: Waiting in Reception.",
+      "priority": "HIGH",
+      "eventType": "CANDIDATE_ARRIVED",
+      "entityId": "cand-1",
+      "entityType": "CANDIDATE",
+      "read": false,
+      "createdAt": "2026-09-30T11:08:27.920Z",
+      "actionButtons": [
+        {
+          "label": "View Record",
+          "actionKey": "VIEW_CANDIDATE",
+          "payload": {
+            "candidateId": "cand-1"
+          }
+        }
+      ],
+      "payload": {
+        "candidateName": "Vikram Malhotra",
+        "position": "Senior Real Estate Consultant",
+        "interviewer": "Nisha Verma",
+        "arrived": "11:08 AM",
+        "currentLocation": "Reception / Waiting Lounge",
+        "room": "Not Assigned",
+        "photoAvailable": true,
+        "resumeAvailable": true
+      }
+    },
+    {
+      "id": "notif-1790766507948-ceo",
+      "recipientRole": "CEO",
+      "title": "Candidate Arrived for Interview",
+      "message": "Vikram Malhotra (Senior Real Estate Consultant) is in reception for Round 1 - Technical Assessment.",
+      "priority": "NORMAL",
+      "eventType": "CANDIDATE_ARRIVED",
+      "entityId": "cand-1",
+      "entityType": "CANDIDATE",
+      "read": false,
+      "createdAt": "2026-09-30T11:08:27.920Z",
+      "actionButtons": [
+        {
+          "label": "Executive Profile",
+          "actionKey": "VIEW_CANDIDATE",
+          "payload": {
+            "candidateId": "cand-1"
+          }
+        }
+      ],
+      "payload": {
+        "candidateName": "Vikram Malhotra",
+        "position": "Senior Real Estate Consultant",
+        "stage": "Round 1 - Technical Assessment",
+        "interviewer": "Nisha Verma",
+        "scheduled": "Walk-in / Immediate",
+        "arrived": "11:08 AM",
+        "currentStatus": "Waiting in Reception"
+      }
+    },
+    {
+      "id": "notif-1790766507948-intv",
+      "recipientRole": "INTERVIEWER",
+      "recipientUserId": "usr-int-1",
+      "title": "Your Candidate Has Arrived",
+      "message": "Vikram Malhotra has arrived for Round 1 - Technical Assessment. Waiting in Reception area.",
+      "priority": "HIGH",
+      "eventType": "CANDIDATE_WAITING",
+      "entityId": "cand-1",
+      "entityType": "INTERVIEW",
+      "read": false,
+      "createdAt": "2026-09-30T11:08:27.920Z",
+      "actionButtons": [
+        {
+          "label": "View Candidate",
+          "actionKey": "VIEW_CANDIDATE",
+          "payload": {
+            "candidateId": "cand-1"
+          }
+        },
+        {
+          "label": "Start Interview",
+          "actionKey": "START_INTERVIEW",
+          "payload": {
+            "interviewId": "intv-1790766507893-j71d"
+          }
+        }
+      ],
+      "payload": {
+        "candidateName": "Vikram Malhotra",
+        "position": "Senior Real Estate Consultant",
+        "stage": "Round 1 - Technical Assessment",
+        "arrived": "11:08 AM",
+        "currentLocation": "Waiting Area",
+        "room": "Awaiting HR Room Assignment",
+        "experience": "5 Years",
+        "relevantExperience": "5 Years in Prime Real Estate",
+        "livePhoto": "data:image/jpeg;base64,/9j/4AAQSkZJRg=="
+      }
+    },
+    {
+      "id": "notif-1790766507948-rec",
+      "recipientRole": "RECEPTION",
+      "title": "Candidate Arrived at Front Desk",
+      "message": "Vikram Malhotra self checked-in for Senior Real Estate Consultant. Direct to Waiting Lounge.",
+      "priority": "HIGH",
+      "eventType": "CANDIDATE_ARRIVED",
+      "entityId": "cand-1",
+      "entityType": "CANDIDATE",
+      "read": false,
+      "createdAt": "2026-09-30T11:08:27.920Z",
+      "actionButtons": [
+        {
+          "label": "Assist Candidate",
+          "actionKey": "VIEW_CANDIDATE",
+          "payload": {
+            "candidateId": "cand-1"
+          }
+        }
+      ],
+      "payload": {
+        "candidateName": "Vikram Malhotra",
+        "position": "Senior Real Estate Consultant",
+        "interviewer": "Nisha Verma",
+        "status": "Waiting in Lounge",
+        "action": "Guide candidate to waiting area lounge and offer comfort",
+        "arrived": "11:08 AM",
+        "livePhoto": "data:image/jpeg;base64,/9j/4AAQSkZJRg=="
+      }
+    },
     {
       "id": "notif-pwd-done-1790756779265",
       "recipientRole": "ADMIN",
@@ -3577,6 +3926,47 @@
   ],
   "timelineEvents": [
     {
+      "id": "tl-1790766507948-submit",
+      "candidateId": "cand-1",
+      "timestamp": "2026-09-30T11:08:27.920Z",
+      "actorType": "USER",
+      "actorName": "Vikram Malhotra",
+      "eventType": "CANDIDATE_FORM_SUBMITTED",
+      "description": "Candidate completed self-check-in with live photo and resume verification."
+    },
+    {
+      "id": "tl-1790766507948-alerts",
+      "candidateId": "cand-1",
+      "timestamp": "2026-09-30T11:08:27.920Z",
+      "actorType": "SYSTEM",
+      "actorName": "Workflow Engine",
+      "eventType": "ROLE_BASED_ALERTS_DISPATCHED",
+      "description": "Dispatched automated arrival alerts to HR, Interviewer (Nisha Verma), Admin, CEO, and Reception."
+    },
+    {
+      "id": "tl-1790766507893-val",
+      "candidateId": "cand-1",
+      "timestamp": "2026-09-30T11:08:27.890Z",
+      "actorType": "SYSTEM",
+      "actorName": "WCR Automated Validation Engine",
+      "eventType": "CANDIDATE_VALIDATION_COMPLETED",
+      "description": "Automated validation completed: READY_FOR_RECEPTION. Government ID format & resume checked.",
+      "metadata": {
+        "validationStatus": "READY_FOR_RECEPTION",
+        "checksPerformed": 10,
+        "checksPassed": 10
+      }
+    },
+    {
+      "id": "tl-1790766507893-reg",
+      "candidateId": "cand-1",
+      "timestamp": "2026-09-30T11:08:27.890Z",
+      "actorType": "USER",
+      "actorName": "Vikram Malhotra",
+      "eventType": "CANDIDATE_SELF_REGISTRATION",
+      "description": "Candidate self-registered via General Reception QR code. Status set to Arrived."
+    },
+    {
       "id": "tl-1790756207977-del",
       "candidateId": "cand-1790752225097-s9nq",
       "timestamp": "2026-09-30T08:16:47.977Z",
@@ -4030,6 +4420,68 @@
     }
   ],
   "auditLogs": [
+    {
+      "id": "aud-1790766507948",
+      "timestamp": "2026-09-30T11:08:27.920Z",
+      "actorType": "SYSTEM",
+      "actorName": "Self-CheckIn Engine",
+      "action": "CANDIDATE_CHECKED_IN",
+      "details": "Candidate Vikram Malhotra (cand-1) arrived via QR token WCR-GEN-1790766507765-2EBFAE9979EBCB56DFEB9A51. Persisted to DB.",
+      "entityId": "cand-1",
+      "entityType": "CANDIDATE"
+    },
+    {
+      "id": "aud-1790766507893-sub",
+      "timestamp": "2026-09-30T11:08:27.890Z",
+      "actorType": "USER",
+      "actorName": "Vikram Malhotra",
+      "action": "FORM_SUBMITTED",
+      "details": "Candidate self-registration form submitted for Vikram Malhotra (Senior Real Estate Consultant) with Government ID (AADHAAR).",
+      "entityId": "cand-1",
+      "entityType": "CANDIDATE"
+    },
+    {
+      "id": "aud-1790766507893-comp",
+      "timestamp": "2026-09-30T11:08:27.890Z",
+      "actorType": "SYSTEM",
+      "actorName": "Session Manager",
+      "action": "REGISTRATION_SESSION_COMPLETED",
+      "details": "Registration session reg-sess-1790766507765-9c86b4ff19e5 permanently marked COMPLETED and locked after successful submission.",
+      "entityId": "reg-sess-1790766507765-9c86b4ff19e5",
+      "entityType": "CHECK_IN_SESSION"
+    },
+    {
+      "id": "aud-1790766507825-open",
+      "timestamp": "2026-09-30T11:08:27.825Z",
+      "actorType": "SYSTEM",
+      "actorName": "Candidate Phone",
+      "action": "FORM_OPENED",
+      "details": "Opened registration form session reg-sess-1790766507765-9c86b4ff19e5 (Token: WCR-GEN-1790766507765-2EBFAE9979EBCB56DFEB9A51)."
+    },
+    {
+      "id": "aud-1790766507765-created",
+      "timestamp": "2026-09-30T11:08:27.765Z",
+      "actorType": "SYSTEM",
+      "actorName": "WCR QR Gateway",
+      "action": "SESSION_CREATED",
+      "details": "Created fresh isolated registration session reg-sess-1790766507765-9c86b4ff19e5 (Token: WCR-GEN-1790766507765-2EBFAE9979EBCB56DFEB9A51, Expires in 30m)."
+    },
+    {
+      "id": "aud-1790766493394-created",
+      "timestamp": "2026-09-30T11:08:13.394Z",
+      "actorType": "SYSTEM",
+      "actorName": "WCR QR Gateway",
+      "action": "SESSION_CREATED",
+      "details": "Created fresh isolated registration session reg-sess-1790766493394-975a1830d0e5 (Token: WCR-GEN-1790766493394-6BBB4A6FA26124EBCDFA9702, Expires in 30m)."
+    },
+    {
+      "id": "aud-1790766493218-created",
+      "timestamp": "2026-09-30T11:08:13.218Z",
+      "actorType": "SYSTEM",
+      "actorName": "WCR QR Gateway",
+      "action": "SESSION_CREATED",
+      "details": "Created fresh isolated registration session reg-sess-1790766493218-a88c1e879602 (Token: WCR-GEN-1790766493218-C649022727AC448A106F9BA3, Expires in 30m)."
+    },
     {
       "id": "aud-1790756779379-adm-cred",
       "timestamp": "2026-09-30T08:26:19.378Z",
@@ -4610,6 +5062,40 @@
     }
   ],
   "checkInSessions": [
+    {
+      "id": "reg-sess-1790766507765-9c86b4ff19e5",
+      "token": "WCR-GEN-1790766507765-2EBFAE9979EBCB56DFEB9A51",
+      "qrType": "NEW_CANDIDATE_REGISTRATION",
+      "source": "GENERAL_WCR_QR",
+      "status": "COMPLETED",
+      "createdAt": "2026-09-30T11:08:27.765Z",
+      "expiresAt": "2026-09-30T11:38:27.765Z",
+      "openedAt": "2026-09-30T11:08:27.825Z",
+      "completedAt": "2026-09-30T11:08:27.890Z",
+      "submittedAt": "2026-09-30T11:08:27.890Z",
+      "lockedAt": "2026-09-30T11:08:27.890Z",
+      "candidateId": "cand-1",
+      "candidateName": "Vikram Malhotra",
+      "position": "Senior Real Estate Consultant"
+    },
+    {
+      "id": "reg-sess-1790766493394-975a1830d0e5",
+      "token": "WCR-GEN-1790766493394-6BBB4A6FA26124EBCDFA9702",
+      "qrType": "NEW_CANDIDATE_REGISTRATION",
+      "source": "GENERAL_WCR_QR",
+      "status": "ACTIVE",
+      "createdAt": "2026-09-30T11:08:13.394Z",
+      "expiresAt": "2026-09-30T11:38:13.394Z"
+    },
+    {
+      "id": "reg-sess-1790766493218-a88c1e879602",
+      "token": "WCR-GEN-1790766493218-C649022727AC448A106F9BA3",
+      "qrType": "NEW_CANDIDATE_REGISTRATION",
+      "source": "GENERAL_WCR_QR",
+      "status": "ACTIVE",
+      "createdAt": "2026-09-30T11:08:13.218Z",
+      "expiresAt": "2026-09-30T11:38:13.218Z"
+    },
     {
       "id": "reg-sess-1790756227160-yomqtt",
       "token": "WCR-GEN-1790756227160-190P9C",

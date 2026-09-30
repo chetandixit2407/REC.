@@ -2,6 +2,7 @@ import express from 'express';
 import type { Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { dbService } from './src/server/db.ts';
 import { eventWorkflowEngine } from './src/server/workflowEngine.ts';
@@ -788,13 +789,14 @@ async function startServer() {
   // GENERAL WCR QR: CREATE UNIQUE REGISTRATION SESSION
   // Each scan creates an independent, isolated session with BLANK form & expiry
   // ==========================================
-  app.post('/api/register/session', (req: Request, res: Response) => {
+  const handleCreateRegistrationSession = (req: Request, res: Response) => {
     const db = dbService.get();
     const timestamp = new Date().toISOString();
     const expiryMinutes = db.settings.qrSessionExpiryMinutes || 30;
     const expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000).toISOString();
-    const token = `WCR-GEN-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-    const sessionId = `reg-sess-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+    const randomHex = crypto.randomBytes(12).toString('hex').toUpperCase();
+    const token = `WCR-GEN-${Date.now()}-${randomHex}`;
+    const sessionId = `reg-sess-${Date.now()}-${crypto.randomBytes(6).toString('hex')}`;
 
     const newSession: CheckInSession = {
       id: sessionId,
@@ -825,12 +827,15 @@ async function startServer() {
       isBlankForm: true,
       expiryMinutes,
     });
-  });
+  };
+
+  app.post('/api/register/session', handleCreateRegistrationSession);
+  app.post('/api/public/registration-session', handleCreateRegistrationSession);
 
   // ==========================================
   // GENERAL WCR QR: GET SESSION (STRICTLY BLANK IF ACTIVE, AUTHORITATIVE EXPIRY/COMPLETION)
   // ==========================================
-  app.get('/api/register/session/:token', (req: Request, res: Response) => {
+  const handleGetRegistrationSession = (req: Request, res: Response) => {
     const { token } = req.params;
     const db = dbService.get();
     const session = db.checkInSessions.find((s) => s.token === token);
@@ -932,12 +937,15 @@ async function startServer() {
       },
       isBlankForm: true,
     });
-  });
+  };
+
+  app.get('/api/register/session/:token', handleGetRegistrationSession);
+  app.get('/api/public/registration-session/:token', handleGetRegistrationSession);
 
   // ==========================================
   // GENERAL WCR QR: SUBMIT NEW CANDIDATE REGISTRATION (ONE-TIME ONLY)
   // ==========================================
-  app.post('/api/register/submit', (req: Request, res: Response) => {
+  const handleSubmitRegistration = (req: Request, res: Response) => {
     const {
       token,
       fullName,
@@ -1351,6 +1359,22 @@ async function startServer() {
       console.error('Registration failed:', err);
       res.status(500).json({ success: false, error: err.message || 'Registration failed' });
     }
+  };
+
+  app.post('/api/register/submit', handleSubmitRegistration);
+  app.post('/api/public/submit', handleSubmitRegistration);
+
+  // Dedicated public document upload endpoint
+  app.post('/api/public/upload', (req: Request, res: Response) => {
+    const { fileDataUrl, fileName, docType } = req.body;
+    if (!fileDataUrl) {
+      return res.status(400).json({ success: false, error: 'File data is required.' });
+    }
+    res.json({
+      success: true,
+      fileName: fileName || `${docType || 'Document'}.pdf`,
+      uploadedAt: new Date().toISOString(),
+    });
   });
 
   // ==========================================
@@ -1359,11 +1383,11 @@ async function startServer() {
   // ==========================================
   const handleGovernmentIdRequest = (req: Request, res: Response, isDownload = false) => {
     const { candidateId } = req.params;
-    const role = (req.query.role || req.headers['x-user-role']) as UserRole;
-    const userName = (req.query.userName as string) || (req.headers['x-user-name'] as string) || (role === 'HR' ? 'Sneha Patel (HR)' : `${role} User`);
+    const role = (req.headers['x-user-role'] || req.query.role) as UserRole;
+    const userName = (req.headers['x-user-name'] as string) || (req.query.userName as string) || (role === 'HR' ? 'Sneha Patel (HR)' : `${role} User`);
 
-    if (role === 'PANTRY') {
-      return res.status(403).json({ success: false, error: 'Pantry role is unauthorized to access candidate Government IDs.' });
+    if (!role || !['HR', 'ADMIN', 'CEO', 'INTERVIEWER', 'RECEPTION'].includes(role) || role === 'PANTRY') {
+      return res.status(403).json({ success: false, error: 'Access Denied: You do not have permission to access Government ID documents.' });
     }
 
     const db = dbService.get();
@@ -1483,11 +1507,11 @@ async function startServer() {
   // ==========================================
   const handleResumeRequest = (req: Request, res: Response, isDownload = false) => {
     const { candidateId } = req.params;
-    const role = (req.query.role || req.headers['x-user-role']) as UserRole;
-    const userName = (req.query.userName as string) || (req.headers['x-user-name'] as string) || (role === 'HR' ? 'Sneha Patel (HR)' : `${role} User`);
+    const role = (req.headers['x-user-role'] || req.query.role) as UserRole;
+    const userName = (req.headers['x-user-name'] as string) || (req.query.userName as string) || (role === 'HR' ? 'Sneha Patel (HR)' : `${role} User`);
 
-    if (role === 'PANTRY') {
-      return res.status(403).json({ success: false, error: 'Pantry role is unauthorized to access candidate resumes.' });
+    if (!role || !['HR', 'ADMIN', 'CEO', 'INTERVIEWER', 'RECEPTION'].includes(role) || role === 'PANTRY') {
+      return res.status(403).json({ success: false, error: 'Access Denied: You do not have permission to access candidate resumes.' });
     }
 
     const db = dbService.get();
@@ -2067,7 +2091,10 @@ async function startServer() {
   // ADMIN FULL ACCESS USER CREDENTIALS & ID/PASSWORD OVERRIDE
   // ==========================================
   app.get('/api/admin/users', (req: Request, res: Response) => {
-    const role = (req.query.role as UserRole) || 'ADMIN';
+    const role = (req.headers['x-user-role'] || req.query.role) as UserRole;
+    if (!role || (role !== 'ADMIN' && role !== 'HR')) {
+      return res.status(403).json({ success: false, error: 'Forbidden: Administrator credentials required to access user list.' });
+    }
     const db = dbService.get();
 
     // Map users with sanitized properties for safe administrative view
@@ -2471,8 +2498,11 @@ async function startServer() {
   // ==========================================
   // DATA QUERIES WITH ROLE VISIBILITY FILTERING
   // ==========================================
-  app.get('/api/candidates', (req: Request, res: Response) => {
-    const role = (req.query.role as UserRole) || 'HR';
+  const handleGetCandidates = (req: Request, res: Response) => {
+    const role = (req.headers['x-user-role'] || req.query.role) as UserRole;
+    if (!role || !['HR', 'ADMIN', 'CEO', 'INTERVIEWER', 'RECEPTION', 'PANTRY'].includes(role)) {
+      return res.status(401).json({ success: false, error: 'Unauthorized: Staff authentication required to access candidate database.' });
+    }
     const db = dbService.get();
     const visibility = db.settings.fieldVisibility[role] || db.settings.fieldVisibility.HR;
 
@@ -2538,11 +2568,17 @@ async function startServer() {
     });
 
     res.json({ success: true, candidates: filteredCandidates });
-  });
+  };
+
+  app.get('/api/candidates', handleGetCandidates);
+  app.get('/api/staff/candidates', handleGetCandidates);
 
   app.get('/api/candidates/:id', (req: Request, res: Response) => {
     const { id } = req.params;
-    const role = (req.query.role as UserRole) || 'HR';
+    const role = (req.headers['x-user-role'] || req.query.role) as UserRole;
+    if (!role || !['HR', 'ADMIN', 'CEO', 'INTERVIEWER', 'RECEPTION', 'PANTRY'].includes(role)) {
+      return res.status(401).json({ success: false, error: 'Unauthorized: Staff authentication required to access candidate profile.' });
+    }
     const includeDeleted = req.query.includeDeleted === 'true' || role === 'ADMIN';
     const db = dbService.get();
 
