@@ -1,3 +1,60 @@
+export type DomainEventType =
+  | 'CANDIDATE_FORM_SUBMITTED'
+  | 'CANDIDATE_ARRIVED'
+  | 'CANDIDATE_WAITING'
+  | 'ROOM_ASSIGNED'
+  | 'INTERVIEW_STARTED'
+  | 'INTERVIEW_COMPLETED'
+  | 'NEXT_INTERVIEW_CREATED'
+  | 'ROOM_STATUS_CHANGED'
+  | 'ROOM_RESET_TASK_CREATED'
+  | 'PANTRY_TASK_CREATED'
+  | 'PANTRY_TASK_COMPLETED'
+  | 'CANDIDATE_CHECKED_OUT'
+  | 'CANDIDATE_LIVE_PHOTO_CAPTURED'
+  | 'CANDIDATE_RESUME_UPLOADED'
+  | 'CANDIDATE_PROFILE_UPDATED'
+  | 'CANDIDATE_DELETED'
+  | 'CANDIDATE_VALIDATION_COMPLETED'
+  | 'REGISTRATION_SESSION_COMPLETED'
+  | 'NOTIFICATION_CREATED'
+  | 'DASHBOARD_RESYNC'
+  | 'HEARTBEAT';
+
+export interface DomainEvent {
+  eventId: string;
+  eventType: DomainEventType | string;
+  candidateId?: string;
+  visitId?: string;
+  applicationId?: string;
+  interviewId?: string;
+  roomId?: string;
+  taskId?: string;
+  registrationSessionId?: string;
+  timestamp: string;
+  actorType: 'SYSTEM' | 'CANDIDATE' | 'STAFF' | 'USER';
+  source: 'CANDIDATE_REGISTRATION' | 'STAFF_ACTION' | 'WORKFLOW_ENGINE';
+  targetRoles?: UserRole[];
+  targetUserId?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface StaffSession {
+  sessionId: string;
+  token: string;
+  userId: string;
+  name: string;
+  email: string;
+  username?: string;
+  role: UserRole;
+  designation?: string;
+  department: string;
+  permissions: string[];
+  createdAt: string;
+  expiresAt: string;
+  ipAddress?: string;
+}
+
 export type UserRole =
   | 'HR'
   | 'ADMIN'

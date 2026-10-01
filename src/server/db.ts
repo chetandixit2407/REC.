@@ -15,6 +15,7 @@ import type {
   RoleFieldVisibility,
   CandidateChangeRequest,
   PasswordResetRequest,
+  DomainEvent,
 } from '../types/index.ts';
 import { hashPassword, ROLE_PERMISSIONS } from './auth.ts';
 
@@ -35,6 +36,7 @@ export interface DatabaseSchema {
   settings: OfficeSettings;
   changeRequests?: CandidateChangeRequest[];
   passwordResetRequests?: PasswordResetRequest[];
+  domainEvents?: DomainEvent[];
 }
 
 const defaultFieldVisibility: Record<string, RoleFieldVisibility> = {

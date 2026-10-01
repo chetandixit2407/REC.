@@ -152,7 +152,13 @@ export const CandidateDossierModal: React.FC<CandidateDossierModalProps> = ({
       try {
         const res = await fetch(
           `/api/candidates/${encodeURIComponent(candidateId.trim())}?role=${encodeURIComponent(currentRole)}`,
-          { signal: controller.signal }
+          {
+            signal: controller.signal,
+            credentials: 'include',
+            headers: {
+              'x-user-role': currentRole,
+            },
+          }
         );
         clearTimeout(timeoutId);
 
@@ -220,7 +226,8 @@ export const CandidateDossierModal: React.FC<CandidateDossierModalProps> = ({
     try {
       const res = await fetch(`/api/candidates/${candidateId}?role=${currentRole}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-user-role': currentRole },
+        credentials: 'include',
         body: JSON.stringify(editForm),
       });
       const data = await res.json();
@@ -244,7 +251,8 @@ export const CandidateDossierModal: React.FC<CandidateDossierModalProps> = ({
     try {
       const res = await fetch(`/api/candidates/${candidateId}?role=${currentRole}`, {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-user-role': currentRole },
+        credentials: 'include',
         body: JSON.stringify({ reason: deleteReason }),
       });
       const data = await res.json();

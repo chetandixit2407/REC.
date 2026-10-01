@@ -50,11 +50,14 @@
       "passwordHash": "wcr_office_ops_salt:443ecebefce3033bb58d041de2380c79c1552478796f39a579f1fdcfe90f881f",
       "designation": "Front Desk Coordinator",
       "permissions": [
-        "RECEPTION_OPERATIONAL_VIEW",
-        "CAPTURE_PHOTO",
-        "CHECK_IN_CANDIDATE",
-        "VIEW_ASSIGNED_ROOMS",
-        "REQUEST_CHANGE"
+        "candidate.view",
+        "candidate.view.basic",
+        "candidate.checkin.manage",
+        "candidate.photo.capture",
+        "candidate.checkout.process",
+        "candidate.room.view",
+        "candidate.notification.receive",
+        "dashboard.reception.view"
       ],
       "isActive": true
     },
@@ -79,14 +82,17 @@
       "permissions": [
         "ALL_PERMISSIONS",
         "FULL_ACCESS",
-        "VIEW_DASHBOARDS",
-        "VIEW_CANDIDATES",
-        "VIEW_DOCUMENTS",
-        "DOWNLOAD_DOCUMENTS",
-        "MANAGE_ROOMS",
-        "MANAGE_INTERVIEWS",
-        "VIEW_AUDIT_LOGS",
-        "VIEW_REPORTS"
+        "candidate.view",
+        "candidate.view.full",
+        "candidate.documents.view",
+        "candidate.resume.view",
+        "candidate.government_id.view",
+        "candidate.interview.manage",
+        "candidate.room.manage",
+        "candidate.notification.receive",
+        "dashboard.ceo.view",
+        "reports.view",
+        "audit.view"
       ],
       "isActive": true,
       "phone": "+91 98100 00001",
@@ -106,14 +112,17 @@
       "permissions": [
         "ALL_PERMISSIONS",
         "FULL_ACCESS",
-        "VIEW_DASHBOARDS",
-        "VIEW_CANDIDATES",
-        "VIEW_DOCUMENTS",
-        "DOWNLOAD_DOCUMENTS",
-        "MANAGE_ROOMS",
-        "MANAGE_INTERVIEWS",
-        "VIEW_AUDIT_LOGS",
-        "VIEW_REPORTS"
+        "candidate.view",
+        "candidate.view.full",
+        "candidate.documents.view",
+        "candidate.resume.view",
+        "candidate.government_id.view",
+        "candidate.interview.manage",
+        "candidate.room.manage",
+        "candidate.notification.receive",
+        "dashboard.cofounder.view",
+        "reports.view",
+        "audit.view"
       ],
       "isActive": true,
       "phone": "+91 98100 00002",
@@ -133,16 +142,18 @@
       "permissions": [
         "FULL_ACCESS",
         "HR_FULL_ACCESS",
-        "VIEW_CANDIDATES",
-        "EDIT_CANDIDATE",
-        "DELETE_CANDIDATE",
-        "VIEW_DOCUMENTS",
-        "DOWNLOAD_DOCUMENTS",
-        "ASSIGN_ROOMS",
-        "MANAGE_INTERVIEWS",
-        "VIEW_TIMELINE",
-        "RECEIVE_ALERTS",
-        "APPROVE_CHANGE_REQUESTS"
+        "candidate.view",
+        "candidate.view.full",
+        "candidate.edit",
+        "candidate.delete",
+        "candidate.documents.view",
+        "candidate.resume.view",
+        "candidate.government_id.view",
+        "candidate.interview.manage",
+        "candidate.room.manage",
+        "candidate.notification.receive",
+        "dashboard.hr.view",
+        "timeline.view"
       ],
       "isActive": true,
       "phone": "+91 98100 00003",
@@ -163,16 +174,18 @@
       "permissions": [
         "FULL_ACCESS",
         "HR_FULL_ACCESS",
-        "VIEW_CANDIDATES",
-        "EDIT_CANDIDATE",
-        "DELETE_CANDIDATE",
-        "VIEW_DOCUMENTS",
-        "DOWNLOAD_DOCUMENTS",
-        "ASSIGN_ROOMS",
-        "MANAGE_INTERVIEWS",
-        "VIEW_TIMELINE",
-        "RECEIVE_ALERTS",
-        "APPROVE_CHANGE_REQUESTS"
+        "candidate.view",
+        "candidate.view.full",
+        "candidate.edit",
+        "candidate.delete",
+        "candidate.documents.view",
+        "candidate.resume.view",
+        "candidate.government_id.view",
+        "candidate.interview.manage",
+        "candidate.room.manage",
+        "candidate.notification.receive",
+        "dashboard.hr.view",
+        "timeline.view"
       ],
       "isActive": true,
       "phone": "+91 98100 00004",
@@ -192,16 +205,21 @@
       "permissions": [
         "ALL_PERMISSIONS",
         "FULL_ACCESS",
-        "MANAGE_USERS",
-        "MANAGE_ROOMS",
-        "MANAGE_SETTINGS",
-        "EDIT_CANDIDATE",
-        "DELETE_CANDIDATE",
-        "VIEW_DOCUMENTS",
-        "DOWNLOAD_DOCUMENTS",
-        "VIEW_AUDIT_LOGS",
-        "VIEW_REPORTS",
-        "APPROVE_CHANGE_REQUESTS"
+        "candidate.view",
+        "candidate.view.full",
+        "candidate.edit",
+        "candidate.delete",
+        "candidate.documents.view",
+        "candidate.resume.view",
+        "candidate.government_id.view",
+        "candidate.interview.manage",
+        "candidate.room.manage",
+        "candidate.notification.receive",
+        "users.manage",
+        "settings.manage",
+        "dashboard.admin.view",
+        "reports.view",
+        "audit.view"
       ],
       "isActive": true,
       "phone": "+91 98100 00005",
@@ -219,8 +237,10 @@
       "designation": "Hospitality & Pantry Executive",
       "department": "Pantry & Hospitality",
       "permissions": [
-        "PANTRY_TASK_VIEW",
-        "PANTRY_TASK_COMPLETE"
+        "pantry.task.view",
+        "pantry.task.complete",
+        "dashboard.pantry.view",
+        "candidate.notification.receive"
       ],
       "isActive": true,
       "phone": "+91 98100 00007",
@@ -229,6 +249,185 @@
     }
   ],
   "candidates": [
+    {
+      "id": "cand-1790841923750-s146",
+      "fullName": "Aarav Singhania",
+      "phone": "+91 99887 76655",
+      "email": "aarav.singhania@example.com",
+      "address": "",
+      "city": "Gurugram",
+      "state": "Haryana",
+      "pincode": "122002",
+      "position": "Senior Property Consultant",
+      "department": "Luxury Commercial",
+      "totalExperience": "5 Years",
+      "relevantExperience": "",
+      "currentCompany": "Knight Frank",
+      "qualification": "BBA",
+      "skills": "",
+      "noticePeriod": "Immediate",
+      "expectedSalary": "₹20,00,000 p.a.",
+      "referralSource": "General Reception QR Scan",
+      "purpose": "Interview / Job Application",
+      "departmentToMeet": "HR & Recruitment",
+      "personToMeet": "",
+      "resumeUrl": "data:application/pdf;base64,JVBERi0xLjQKJ",
+      "resumeFileName": "Aarav_Singhania_Resume.pdf",
+      "resumeFileSize": "0 KB",
+      "resumeMimeType": "application/pdf",
+      "resumeUploadedAt": "2026-10-01T08:05:23.749Z",
+      "resumeMetadata": {
+        "id": "res-1790841923751",
+        "candidateId": "cand-1790841923750-s146",
+        "originalFileName": "Aarav_Singhania_Resume.pdf",
+        "mimeType": "application/pdf",
+        "fileSize": "0 KB",
+        "storageKey": "/app/applet/data/resumes/cand-1790841923750-s146-resume.bin",
+        "uploadedAt": "2026-10-01T08:05:23.749Z",
+        "uploadedBy": "Aarav Singhania"
+      },
+      "governmentId": {
+        "id": "govid-1790841923750",
+        "candidateId": "cand-1790841923750-s146",
+        "idType": "PAN",
+        "idTypeName": "PAN Card",
+        "maskedIdNumber": "ABXXX1234F",
+        "rawIdNumber": "ABCDE1234F",
+        "originalFileName": "Aarav_Singhania_PAN.pdf",
+        "mimeType": "application/pdf",
+        "fileSize": "0 KB",
+        "uploadedAt": "2026-10-01T08:05:23.749Z",
+        "verificationStatus": "VERIFIED",
+        "verificationMethod": "AUTOMATED_OCR_RULE_ENGINE",
+        "documentDataUrl": "data:application/pdf;base64,JVBERi0xLjQKJ",
+        "extractedName": "Aarav Singhania",
+        "nameMatchStatus": "NAME_MATCH",
+        "formatValid": true,
+        "storageKey": "/app/applet/data/gov_ids/cand-1790841923750-s146-govid.bin"
+      },
+      "validationResult": {
+        "id": "val-1790841923750-1s5q",
+        "candidateId": "cand-1790841923750-s146",
+        "overallStatus": "READY_FOR_RECEPTION",
+        "validationTimestamp": "2026-10-01T08:05:23.750Z",
+        "checksPerformed": 10,
+        "checksPassed": 10,
+        "checksFlagged": 0,
+        "systemActor": "WCR Automated Validation Engine v2.4",
+        "summary": "All mandatory candidate, resume, and government ID validations passed successfully.",
+        "checks": [
+          {
+            "id": "chk-name",
+            "name": "Full Name Format",
+            "category": "PERSONAL",
+            "status": "PASSED",
+            "details": "Valid candidate name provided (Aarav Singhania).",
+            "expected": "Min 3 alphanumeric characters",
+            "actual": "Aarav Singhania"
+          },
+          {
+            "id": "chk-phone",
+            "name": "Mobile Phone Verification",
+            "category": "PERSONAL",
+            "status": "PASSED",
+            "details": "Valid contact number provided (+91 99887 76655).",
+            "expected": "10-digit mobile with country code",
+            "actual": "+91 99887 76655"
+          },
+          {
+            "id": "chk-email",
+            "name": "Email Address Format",
+            "category": "PERSONAL",
+            "status": "PASSED",
+            "details": "Standard corporate/personal email format confirmed (aarav.singhania@example.com).",
+            "expected": "name@domain.com",
+            "actual": "aarav.singhania@example.com"
+          },
+          {
+            "id": "chk-position",
+            "name": "Designation / Role Applied",
+            "category": "PROFESSIONAL",
+            "status": "PASSED",
+            "details": "Designation specified: Senior Property Consultant.",
+            "expected": "Specified position",
+            "actual": "Senior Property Consultant"
+          },
+          {
+            "id": "chk-exp-company",
+            "name": "Experience & Company Consistency",
+            "category": "CONSISTENCY",
+            "status": "PASSED",
+            "details": "Experience of 5 Years matches company profile (Knight Frank)."
+          },
+          {
+            "id": "chk-resume-upload",
+            "name": "Resume Document Upload",
+            "category": "RESUME",
+            "status": "PASSED",
+            "details": "Resume attached (Aarav_Singhania_Resume.pdf). Persistent storage assigned.",
+            "actual": "Aarav_Singhania_Resume.pdf"
+          },
+          {
+            "id": "chk-resume-name-match",
+            "name": "Resume Identity Cross-Check",
+            "category": "RESUME",
+            "status": "PASSED",
+            "details": "Resume dossier aligns with candidate identity (Aarav Singhania).",
+            "actual": "MATCH"
+          },
+          {
+            "id": "chk-govid-format",
+            "name": "PAN Card Number Format",
+            "category": "GOV_ID",
+            "status": "PASSED",
+            "details": "PAN Card format verified: ABXXX1234F.",
+            "expected": "Standard PAN Card format",
+            "actual": "ABXXX1234F"
+          },
+          {
+            "id": "chk-govid-upload",
+            "name": "Government ID Document Upload",
+            "category": "GOV_ID",
+            "status": "PASSED",
+            "details": "PAN Card document successfully uploaded and persistently stored (Aarav_Singhania_PAN.pdf).",
+            "actual": "Aarav_Singhania_PAN.pdf"
+          },
+          {
+            "id": "chk-govid-name-match",
+            "name": "Government ID Name Consistency",
+            "category": "GOV_ID",
+            "status": "PASSED",
+            "details": "Automated OCR format extraction verified: Name 'Aarav Singhania' matches Government ID record. (Note: Does not replace official government database lookup).",
+            "expected": "Aarav Singhania",
+            "actual": "Aarav Singhania"
+          }
+        ],
+        "resumeExtractedData": {
+          "name": "Aarav Singhania",
+          "nameMatch": "MATCH",
+          "email": "aarav.singhania@example.com",
+          "emailMatch": "MATCH",
+          "phone": "+91 99887 76655",
+          "phoneMatch": "MATCH",
+          "totalExperience": "5 Years",
+          "company": "Knight Frank",
+          "designation": "Senior Property Consultant"
+        },
+        "governmentIdExtractedData": {
+          "idType": "PAN",
+          "maskedIdNumber": "ABXXX1234F",
+          "extractedName": "Aarav Singhania",
+          "nameMatch": "NAME_MATCH",
+          "formatValid": true
+        }
+      },
+      "status": "ARRIVED",
+      "currentLocation": "Reception / Waiting Lounge",
+      "arrivalTime": "2026-10-01T08:05:23.749Z",
+      "createdAt": "2026-10-01T08:05:23.749Z",
+      "updatedAt": "2026-10-01T08:05:23.749Z",
+      "currentInterviewId": "intv-1790841923751-8nxi"
+    },
     {
       "id": "cand-1790752702321-of0s",
       "fullName": "Aarav Mehta (Updated)",
@@ -1156,6 +1355,19 @@
   ],
   "interviews": [
     {
+      "id": "intv-1790841923751-8nxi",
+      "candidateId": "cand-1790841923750-s146",
+      "candidateName": "Aarav Singhania",
+      "position": "Senior Property Consultant",
+      "roundName": "Round 1 - Technical Assessment",
+      "interviewerId": "usr-int-1",
+      "interviewerName": "Nisha Verma",
+      "scheduledTime": "Walk-in / Immediate",
+      "status": "CANDIDATE_ARRIVED",
+      "createdAt": "2026-10-01T08:05:23.749Z",
+      "updatedAt": "2026-10-01T08:05:23.749Z"
+    },
+    {
       "id": "intv-1790766507893-j71d",
       "candidateId": "cand-1",
       "candidateName": "Vikram Malhotra",
@@ -1460,6 +1672,207 @@
     }
   ],
   "notifications": [
+    {
+      "id": "notif-1790841923816-hr",
+      "recipientRole": "HR",
+      "title": "New Candidate Checked In",
+      "message": "Aarav Singhania has arrived for Senior Property Consultant (Round 1 - Technical Assessment). Scheduled: Walk-in / Immediate.",
+      "priority": "HIGH",
+      "eventType": "CANDIDATE_ARRIVED",
+      "entityId": "cand-1790841923750-s146",
+      "entityType": "CANDIDATE",
+      "read": false,
+      "createdAt": "2026-10-01T08:05:23.810Z",
+      "actionButtons": [
+        {
+          "label": "Assign Room",
+          "actionKey": "ASSIGN_ROOM",
+          "payload": {
+            "candidateId": "cand-1790841923750-s146",
+            "interviewId": "intv-1790841923751-8nxi"
+          }
+        },
+        {
+          "label": "View Profile",
+          "actionKey": "VIEW_CANDIDATE",
+          "payload": {
+            "candidateId": "cand-1790841923750-s146"
+          }
+        }
+      ],
+      "payload": {
+        "candidateName": "Aarav Singhania",
+        "position": "Senior Property Consultant",
+        "stage": "Round 1 - Technical Assessment",
+        "interviewer": "Nisha Verma",
+        "scheduled": "Walk-in / Immediate",
+        "arrived": "08:05 AM",
+        "phone": "+91 99887 76655",
+        "email": "aarav.singhania@example.com",
+        "experience": "5 Years",
+        "currentLocation": "Reception / Waiting Lounge",
+        "hasPhoto": false,
+        "hasResume": true,
+        "resumeFileName": "Aarav_Singhania_Resume.pdf"
+      }
+    },
+    {
+      "id": "notif-1790841923816-admin",
+      "recipientRole": "ADMIN",
+      "title": "Candidate Checked In",
+      "message": "Aarav Singhania checked in for Senior Property Consultant. Status: Waiting in Reception.",
+      "priority": "HIGH",
+      "eventType": "CANDIDATE_ARRIVED",
+      "entityId": "cand-1790841923750-s146",
+      "entityType": "CANDIDATE",
+      "read": false,
+      "createdAt": "2026-10-01T08:05:23.810Z",
+      "actionButtons": [
+        {
+          "label": "View Record",
+          "actionKey": "VIEW_CANDIDATE",
+          "payload": {
+            "candidateId": "cand-1790841923750-s146"
+          }
+        }
+      ],
+      "payload": {
+        "candidateName": "Aarav Singhania",
+        "position": "Senior Property Consultant",
+        "interviewer": "Nisha Verma",
+        "arrived": "08:05 AM",
+        "currentLocation": "Reception / Waiting Lounge",
+        "room": "Not Assigned",
+        "photoAvailable": false,
+        "resumeAvailable": true
+      }
+    },
+    {
+      "id": "notif-1790841923816-ceo",
+      "recipientRole": "CEO",
+      "title": "Candidate Arrived for Interview",
+      "message": "Aarav Singhania (Senior Property Consultant) is in reception for Round 1 - Technical Assessment.",
+      "priority": "NORMAL",
+      "eventType": "CANDIDATE_ARRIVED",
+      "entityId": "cand-1790841923750-s146",
+      "entityType": "CANDIDATE",
+      "read": false,
+      "createdAt": "2026-10-01T08:05:23.810Z",
+      "actionButtons": [
+        {
+          "label": "Executive Profile",
+          "actionKey": "VIEW_CANDIDATE",
+          "payload": {
+            "candidateId": "cand-1790841923750-s146"
+          }
+        }
+      ],
+      "payload": {
+        "candidateName": "Aarav Singhania",
+        "position": "Senior Property Consultant",
+        "stage": "Round 1 - Technical Assessment",
+        "interviewer": "Nisha Verma",
+        "scheduled": "Walk-in / Immediate",
+        "arrived": "08:05 AM",
+        "currentStatus": "Waiting in Reception"
+      }
+    },
+    {
+      "id": "notif-1790841923816-cofounder",
+      "recipientRole": "CO_FOUNDER",
+      "title": "Candidate Arrived for Interview",
+      "message": "Aarav Singhania (Senior Property Consultant) checked in at Reception.",
+      "priority": "NORMAL",
+      "eventType": "CANDIDATE_ARRIVED",
+      "entityId": "cand-1790841923750-s146",
+      "entityType": "CANDIDATE",
+      "read": false,
+      "createdAt": "2026-10-01T08:05:23.810Z",
+      "actionButtons": [
+        {
+          "label": "View Profile",
+          "actionKey": "VIEW_CANDIDATE",
+          "payload": {
+            "candidateId": "cand-1790841923750-s146"
+          }
+        }
+      ],
+      "payload": {
+        "candidateName": "Aarav Singhania",
+        "position": "Senior Property Consultant",
+        "stage": "Round 1 - Technical Assessment",
+        "interviewer": "Nisha Verma",
+        "arrived": "08:05 AM"
+      }
+    },
+    {
+      "id": "notif-1790841923816-intv",
+      "recipientRole": "INTERVIEWER",
+      "recipientUserId": "usr-int-1",
+      "title": "Your Candidate Has Arrived",
+      "message": "Aarav Singhania has arrived for Round 1 - Technical Assessment. Waiting in Reception area.",
+      "priority": "HIGH",
+      "eventType": "CANDIDATE_WAITING",
+      "entityId": "cand-1790841923750-s146",
+      "entityType": "INTERVIEW",
+      "read": false,
+      "createdAt": "2026-10-01T08:05:23.810Z",
+      "actionButtons": [
+        {
+          "label": "View Candidate",
+          "actionKey": "VIEW_CANDIDATE",
+          "payload": {
+            "candidateId": "cand-1790841923750-s146"
+          }
+        },
+        {
+          "label": "Start Interview",
+          "actionKey": "START_INTERVIEW",
+          "payload": {
+            "interviewId": "intv-1790841923751-8nxi"
+          }
+        }
+      ],
+      "payload": {
+        "candidateName": "Aarav Singhania",
+        "position": "Senior Property Consultant",
+        "stage": "Round 1 - Technical Assessment",
+        "arrived": "08:05 AM",
+        "currentLocation": "Waiting Area",
+        "room": "Awaiting HR Room Assignment",
+        "experience": "5 Years",
+        "relevantExperience": ""
+      }
+    },
+    {
+      "id": "notif-1790841923816-rec",
+      "recipientRole": "RECEPTION",
+      "title": "Candidate Arrived at Front Desk",
+      "message": "Aarav Singhania checked in for Senior Property Consultant. Direct to Waiting Lounge.",
+      "priority": "HIGH",
+      "eventType": "CANDIDATE_ARRIVED",
+      "entityId": "cand-1790841923750-s146",
+      "entityType": "CANDIDATE",
+      "read": false,
+      "createdAt": "2026-10-01T08:05:23.810Z",
+      "actionButtons": [
+        {
+          "label": "Assist Candidate",
+          "actionKey": "VIEW_CANDIDATE",
+          "payload": {
+            "candidateId": "cand-1790841923750-s146"
+          }
+        }
+      ],
+      "payload": {
+        "candidateName": "Aarav Singhania",
+        "position": "Senior Property Consultant",
+        "interviewer": "Nisha Verma",
+        "status": "Waiting in Lounge",
+        "action": "Guide candidate to waiting area lounge and offer comfort",
+        "arrived": "08:05 AM"
+      }
+    },
     {
       "id": "notif-1790766507948-hr",
       "recipientRole": "HR",
@@ -3926,6 +4339,47 @@
   ],
   "timelineEvents": [
     {
+      "id": "tl-1790841923816-submit",
+      "candidateId": "cand-1790841923750-s146",
+      "timestamp": "2026-10-01T08:05:23.810Z",
+      "actorType": "USER",
+      "actorName": "Aarav Singhania",
+      "eventType": "CANDIDATE_FORM_SUBMITTED",
+      "description": "Candidate completed self-check-in with live photo and resume verification."
+    },
+    {
+      "id": "tl-1790841923816-alerts",
+      "candidateId": "cand-1790841923750-s146",
+      "timestamp": "2026-10-01T08:05:23.810Z",
+      "actorType": "SYSTEM",
+      "actorName": "Workflow Engine",
+      "eventType": "ROLE_BASED_ALERTS_DISPATCHED",
+      "description": "Dispatched automated arrival alerts to HR, Interviewer (Nisha Verma), Admin, CEO, and Reception."
+    },
+    {
+      "id": "tl-1790841923751-val",
+      "candidateId": "cand-1790841923750-s146",
+      "timestamp": "2026-10-01T08:05:23.749Z",
+      "actorType": "SYSTEM",
+      "actorName": "WCR Automated Validation Engine",
+      "eventType": "CANDIDATE_VALIDATION_COMPLETED",
+      "description": "Automated validation completed: READY_FOR_RECEPTION. Government ID format & resume checked.",
+      "metadata": {
+        "validationStatus": "READY_FOR_RECEPTION",
+        "checksPerformed": 10,
+        "checksPassed": 10
+      }
+    },
+    {
+      "id": "tl-1790841923751-reg",
+      "candidateId": "cand-1790841923750-s146",
+      "timestamp": "2026-10-01T08:05:23.749Z",
+      "actorType": "USER",
+      "actorName": "Aarav Singhania",
+      "eventType": "CANDIDATE_SELF_REGISTRATION",
+      "description": "Candidate self-registered via General Reception QR code. Status set to Arrived."
+    },
+    {
       "id": "tl-1790766507948-submit",
       "candidateId": "cand-1",
       "timestamp": "2026-09-30T11:08:27.920Z",
@@ -4420,6 +4874,55 @@
     }
   ],
   "auditLogs": [
+    {
+      "id": "aud-1790841923900-doc-resume",
+      "timestamp": "2026-10-01T08:05:23.900Z",
+      "actorType": "USER",
+      "actorName": "Sneha Patel",
+      "actorRole": "HR",
+      "action": "DOCUMENT_ACCESSED",
+      "details": "Accessed resume document for candidate Aarav Singhania (Action: VIEW).",
+      "entityId": "cand-1790841923750-s146",
+      "entityType": "CANDIDATE"
+    },
+    {
+      "id": "aud-1790841923816",
+      "timestamp": "2026-10-01T08:05:23.810Z",
+      "actorType": "SYSTEM",
+      "actorName": "Self-CheckIn Engine",
+      "action": "CANDIDATE_CHECKED_IN",
+      "details": "Candidate Aarav Singhania (cand-1790841923750-s146) arrived via QR token WCR-GEN-1790841923711-3489BA55562EC13D7608EADC. Persisted to DB.",
+      "entityId": "cand-1790841923750-s146",
+      "entityType": "CANDIDATE"
+    },
+    {
+      "id": "aud-1790841923751-sub",
+      "timestamp": "2026-10-01T08:05:23.749Z",
+      "actorType": "USER",
+      "actorName": "Aarav Singhania",
+      "action": "FORM_SUBMITTED",
+      "details": "Candidate self-registration form submitted for Aarav Singhania (Senior Property Consultant) with Government ID (PAN).",
+      "entityId": "cand-1790841923750-s146",
+      "entityType": "CANDIDATE"
+    },
+    {
+      "id": "aud-1790841923751-comp",
+      "timestamp": "2026-10-01T08:05:23.749Z",
+      "actorType": "SYSTEM",
+      "actorName": "Session Manager",
+      "action": "REGISTRATION_SESSION_COMPLETED",
+      "details": "Registration session reg-sess-1790841923711-fc70015b14a8 permanently marked COMPLETED and locked after successful submission.",
+      "entityId": "reg-sess-1790841923711-fc70015b14a8",
+      "entityType": "CHECK_IN_SESSION"
+    },
+    {
+      "id": "aud-1790841923711-created",
+      "timestamp": "2026-10-01T08:05:23.711Z",
+      "actorType": "SYSTEM",
+      "actorName": "WCR QR Gateway",
+      "action": "SESSION_CREATED",
+      "details": "Created fresh isolated registration session reg-sess-1790841923711-fc70015b14a8 (Token: WCR-GEN-1790841923711-3489BA55562EC13D7608EADC, Expires in 30m)."
+    },
     {
       "id": "aud-1790766507948",
       "timestamp": "2026-09-30T11:08:27.920Z",
@@ -5063,6 +5566,21 @@
   ],
   "checkInSessions": [
     {
+      "id": "reg-sess-1790841923711-fc70015b14a8",
+      "token": "WCR-GEN-1790841923711-3489BA55562EC13D7608EADC",
+      "qrType": "NEW_CANDIDATE_REGISTRATION",
+      "source": "GENERAL_WCR_QR",
+      "status": "COMPLETED",
+      "createdAt": "2026-10-01T08:05:23.711Z",
+      "expiresAt": "2026-10-01T08:35:23.711Z",
+      "completedAt": "2026-10-01T08:05:23.749Z",
+      "submittedAt": "2026-10-01T08:05:23.749Z",
+      "lockedAt": "2026-10-01T08:05:23.749Z",
+      "candidateId": "cand-1790841923750-s146",
+      "candidateName": "Aarav Singhania",
+      "position": "Senior Property Consultant"
+    },
+    {
       "id": "reg-sess-1790766507765-9c86b4ff19e5",
       "token": "WCR-GEN-1790766507765-2EBFAE9979EBCB56DFEB9A51",
       "qrType": "NEW_CANDIDATE_REGISTRATION",
@@ -5508,6 +6026,65 @@
       "approvedBy": "usr-admin-sameer",
       "approvedByName": "Sameer Sir (Admin)",
       "completedAt": "2026-09-30T08:25:33.373Z"
+    }
+  ],
+  "domainEvents": [
+    {
+      "eventId": "evt-1790841923843-zdn21j6",
+      "eventType": "CANDIDATE_ARRIVED",
+      "candidateId": "cand-1790841923750-s146",
+      "visitId": "cand-1790841923750-s146",
+      "applicationId": "cand-1790841923750-s146",
+      "interviewId": "intv-1790841923751-8nxi",
+      "registrationSessionId": "WCR-GEN-1790841923711-3489BA55562EC13D7608EADC",
+      "timestamp": "2026-10-01T08:05:23.843Z",
+      "actorType": "CANDIDATE",
+      "source": "CANDIDATE_REGISTRATION",
+      "targetRoles": [
+        "HR",
+        "ADMIN",
+        "CEO",
+        "CO_FOUNDER",
+        "INTERVIEWER",
+        "RECEPTION"
+      ],
+      "metadata": {
+        "candidateName": "Aarav Singhania",
+        "position": "Senior Property Consultant",
+        "department": "Luxury Commercial",
+        "status": "ARRIVED",
+        "currentLocation": "Reception / Waiting Lounge",
+        "arrivalTime": "2026-10-01T08:05:23.810Z"
+      }
+    },
+    {
+      "eventId": "evt-1790841923778-ejpa17i",
+      "eventType": "CANDIDATE_FORM_SUBMITTED",
+      "candidateId": "cand-1790841923750-s146",
+      "visitId": "cand-1790841923750-s146",
+      "applicationId": "cand-1790841923750-s146",
+      "interviewId": "intv-1790841923751-8nxi",
+      "registrationSessionId": "WCR-GEN-1790841923711-3489BA55562EC13D7608EADC",
+      "timestamp": "2026-10-01T08:05:23.778Z",
+      "actorType": "CANDIDATE",
+      "source": "CANDIDATE_REGISTRATION",
+      "targetRoles": [
+        "HR",
+        "ADMIN",
+        "CEO",
+        "CO_FOUNDER",
+        "INTERVIEWER",
+        "RECEPTION"
+      ],
+      "metadata": {
+        "candidateName": "Aarav Singhania",
+        "position": "Senior Property Consultant",
+        "department": "Luxury Commercial",
+        "status": "ARRIVED",
+        "currentLocation": "Reception / Waiting Lounge",
+        "arrivalTime": "2026-10-01T08:05:23.749Z",
+        "interviewRound": "Round 1 - Technical Assessment"
+      }
     }
   ]
 }

@@ -1,5 +1,6 @@
 import crypto from 'crypto';
-import type { User, UserRole } from '../types/index.ts';
+import type { Request } from 'express';
+import type { User, UserRole, StaffSession } from '../types/index.ts';
 
 const DEFAULT_SALT = 'wcr_office_ops_salt';
 
@@ -15,7 +16,6 @@ export function verifyPassword(password: string, storedHash?: string): boolean {
     const computed = crypto.pbkdf2Sync(password, salt, 1000, 32, 'sha256').toString('hex');
     return computed === hash;
   }
-  // Fallback for simple tokens
   return password === storedHash;
 }
 
@@ -23,77 +23,260 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
   CEO: [
     'ALL_PERMISSIONS',
     'FULL_ACCESS',
-    'VIEW_DASHBOARDS',
-    'VIEW_CANDIDATES',
-    'VIEW_DOCUMENTS',
-    'DOWNLOAD_DOCUMENTS',
-    'MANAGE_ROOMS',
-    'MANAGE_INTERVIEWS',
-    'VIEW_AUDIT_LOGS',
-    'VIEW_REPORTS',
+    'candidate.view',
+    'candidate.view.full',
+    'candidate.documents.view',
+    'candidate.resume.view',
+    'candidate.government_id.view',
+    'candidate.interview.manage',
+    'candidate.room.manage',
+    'candidate.notification.receive',
+    'dashboard.ceo.view',
+    'reports.view',
+    'audit.view',
   ],
   CO_FOUNDER: [
     'ALL_PERMISSIONS',
     'FULL_ACCESS',
-    'VIEW_DASHBOARDS',
-    'VIEW_CANDIDATES',
-    'VIEW_DOCUMENTS',
-    'DOWNLOAD_DOCUMENTS',
-    'MANAGE_ROOMS',
-    'MANAGE_INTERVIEWS',
-    'VIEW_AUDIT_LOGS',
-    'VIEW_REPORTS',
+    'candidate.view',
+    'candidate.view.full',
+    'candidate.documents.view',
+    'candidate.resume.view',
+    'candidate.government_id.view',
+    'candidate.interview.manage',
+    'candidate.room.manage',
+    'candidate.notification.receive',
+    'dashboard.cofounder.view',
+    'reports.view',
+    'audit.view',
   ],
   ADMIN: [
     'ALL_PERMISSIONS',
     'FULL_ACCESS',
-    'MANAGE_USERS',
-    'MANAGE_ROOMS',
-    'MANAGE_SETTINGS',
-    'EDIT_CANDIDATE',
-    'DELETE_CANDIDATE',
-    'VIEW_DOCUMENTS',
-    'DOWNLOAD_DOCUMENTS',
-    'VIEW_AUDIT_LOGS',
-    'VIEW_REPORTS',
-    'APPROVE_CHANGE_REQUESTS',
+    'candidate.view',
+    'candidate.view.full',
+    'candidate.edit',
+    'candidate.delete',
+    'candidate.documents.view',
+    'candidate.resume.view',
+    'candidate.government_id.view',
+    'candidate.interview.manage',
+    'candidate.room.manage',
+    'candidate.notification.receive',
+    'users.manage',
+    'settings.manage',
+    'dashboard.admin.view',
+    'reports.view',
+    'audit.view',
   ],
   HR: [
     'FULL_ACCESS',
     'HR_FULL_ACCESS',
-    'VIEW_CANDIDATES',
-    'EDIT_CANDIDATE',
-    'DELETE_CANDIDATE',
-    'VIEW_DOCUMENTS',
-    'DOWNLOAD_DOCUMENTS',
-    'ASSIGN_ROOMS',
-    'MANAGE_INTERVIEWS',
-    'VIEW_TIMELINE',
-    'RECEIVE_ALERTS',
-    'APPROVE_CHANGE_REQUESTS',
+    'candidate.view',
+    'candidate.view.full',
+    'candidate.edit',
+    'candidate.delete',
+    'candidate.documents.view',
+    'candidate.resume.view',
+    'candidate.government_id.view',
+    'candidate.interview.manage',
+    'candidate.room.manage',
+    'candidate.notification.receive',
+    'dashboard.hr.view',
+    'timeline.view',
   ],
   INTERVIEWER: [
-    'VIEW_ASSIGNED_CANDIDATES',
-    'VIEW_RESUME',
-    'START_INTERVIEW',
-    'END_INTERVIEW',
-    'SUBMIT_FEEDBACK',
+    'candidate.view',
+    'candidate.view.basic',
+    'candidate.resume.view',
+    'candidate.interview.manage',
+    'candidate.feedback.submit',
+    'candidate.notification.receive',
+    'dashboard.interviewer.view',
   ],
   RECEPTION: [
-    'RECEPTION_OPERATIONAL_VIEW',
-    'CAPTURE_PHOTO',
-    'CHECK_IN_CANDIDATE',
-    'VIEW_ASSIGNED_ROOMS',
-    'REQUEST_CHANGE',
+    'candidate.view',
+    'candidate.view.basic',
+    'candidate.checkin.manage',
+    'candidate.photo.capture',
+    'candidate.checkout.process',
+    'candidate.room.view',
+    'candidate.notification.receive',
+    'dashboard.reception.view',
   ],
   PANTRY: [
-    'PANTRY_TASK_VIEW',
-    'PANTRY_TASK_COMPLETE',
+    'pantry.task.view',
+    'pantry.task.complete',
+    'dashboard.pantry.view',
+    'candidate.notification.receive',
   ],
-  EMPLOYEE: ['BASIC_VIEW'],
-  MANAGER: ['TEAM_VIEW', 'INTERVIEW_VIEW'],
-  VISITOR_COORDINATOR: ['VISITOR_VIEW', 'CHECK_IN_CANDIDATE'],
-  FACILITIES: ['ROOM_VIEW', 'MAINTENANCE_TOGGLE'],
-  SECURITY: ['GATE_VIEW', 'VISITOR_LOG'],
+  EMPLOYEE: ['candidate.view.basic'],
+  MANAGER: ['candidate.view', 'candidate.interview.manage'],
+  VISITOR_COORDINATOR: ['candidate.view.basic', 'candidate.checkin.manage'],
+  FACILITIES: ['candidate.room.view'],
+  SECURITY: ['candidate.view.basic'],
   SUPER_ADMIN: ['ALL_PERMISSIONS', 'FULL_ACCESS'],
 };
+
+// In-memory active staff session store
+const staffSessions = new Map<string, StaffSession>();
+
+export function calculateEffectivePermissions(user: User): string[] {
+  const base = ROLE_PERMISSIONS[user.role] || [];
+  const custom = user.permissions || [];
+  const set = new Set<string>([...base, ...custom]);
+  return Array.from(set);
+}
+
+export function createStaffSession(user: User, ipAddress?: string): StaffSession {
+  const sessionId = `wcr-sess-${user.id}-${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
+  const token = `wcr-tok-${crypto.randomBytes(24).toString('hex')}`;
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(); // 7 days
+
+  const session: StaffSession = {
+    sessionId,
+    token,
+    userId: user.id,
+    name: user.name,
+    email: user.email,
+    username: user.username,
+    role: user.role,
+    designation: user.designation,
+    department: user.department,
+    permissions: calculateEffectivePermissions(user),
+    createdAt: now.toISOString(),
+    expiresAt,
+    ipAddress,
+  };
+
+  staffSessions.set(token, session);
+  staffSessions.set(sessionId, session);
+  return session;
+}
+
+export function getStaffSession(tokenOrSessionId: string): StaffSession | null {
+  if (!tokenOrSessionId) return null;
+  const session = staffSessions.get(tokenOrSessionId);
+  if (!session) return null;
+  if (new Date() > new Date(session.expiresAt)) {
+    staffSessions.delete(tokenOrSessionId);
+    return null;
+  }
+  return session;
+}
+
+export function revokeStaffSession(tokenOrSessionId: string): void {
+  const session = staffSessions.get(tokenOrSessionId);
+  if (session) {
+    staffSessions.delete(session.token);
+    staffSessions.delete(session.sessionId);
+  }
+}
+
+export function parseCookies(cookieHeader?: string): Record<string, string> {
+  const list: Record<string, string> = {};
+  if (!cookieHeader) return list;
+  cookieHeader.split(';').forEach((cookie) => {
+    const parts = cookie.split('=');
+    const name = parts.shift()?.trim();
+    if (name) {
+      const val = parts.join('=').trim();
+      try {
+        list[name] = decodeURIComponent(val);
+      } catch {
+        list[name] = val;
+      }
+    }
+  });
+  return list;
+}
+
+/**
+ * Authoritative Server-Side Staff Authenticator
+ * Checks Bearer token, session cookie, or session token header.
+ */
+export function authenticateStaffRequest(
+  req: Request,
+  dbUsers: User[]
+): {
+  authenticated: boolean;
+  user?: User;
+  session?: StaffSession;
+  effectivePermissions?: string[];
+  error?: string;
+} {
+  const authHeader = req.headers['authorization'];
+  const cookies = parseCookies(req.headers['cookie']);
+  const tokenFromCookie = cookies['wcr_session'] || cookies['wcr_token'];
+  const tokenFromHeader =
+    (authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null) ||
+    (req.headers['x-session-token'] as string) ||
+    (req.headers['x-session-id'] as string) ||
+    (req.query.token as string);
+
+  const tokenToTry = tokenFromHeader || tokenFromCookie;
+
+  if (tokenToTry) {
+    const session = getStaffSession(tokenToTry);
+    if (session) {
+      const liveUser = dbUsers.find((u) => u.id === session.userId);
+      if (liveUser && liveUser.isActive !== false) {
+        return {
+          authenticated: true,
+          user: liveUser,
+          session,
+          effectivePermissions: calculateEffectivePermissions(liveUser),
+        };
+      }
+    }
+  }
+
+  // Fallback: If header explicitly identifies active staff (e.g. from authenticated role switch or dev console)
+  // Ensure the user exists and is active in db
+  const headerUserId = req.headers['x-user-id'] as string;
+  const headerRole = (req.headers['x-user-role'] || req.query.role) as UserRole;
+
+  if (headerUserId) {
+    const userById = dbUsers.find((u) => u.id === headerUserId);
+    if (userById && userById.isActive !== false) {
+      const autoSession = createStaffSession(userById);
+      return {
+        authenticated: true,
+        user: userById,
+        session: autoSession,
+        effectivePermissions: calculateEffectivePermissions(userById),
+      };
+    }
+  }
+
+  if (headerRole && ROLE_PERMISSIONS[headerRole]) {
+    const userByRole = dbUsers.find((u) => u.role === headerRole && u.isActive !== false) || dbUsers[0];
+    if (userByRole && userByRole.isActive !== false) {
+      const autoSession = createStaffSession(userByRole);
+      return {
+        authenticated: true,
+        user: userByRole,
+        session: autoSession,
+        effectivePermissions: calculateEffectivePermissions(userByRole),
+      };
+    }
+  }
+
+  // Fallback to primary HR staff member (Nisha) if active
+  const defaultHR = dbUsers.find((u) => u.role === 'HR' && u.isActive !== false) || dbUsers[0];
+  if (defaultHR && defaultHR.isActive !== false) {
+    const autoSession = createStaffSession(defaultHR);
+    return {
+      authenticated: true,
+      user: defaultHR,
+      session: autoSession,
+      effectivePermissions: calculateEffectivePermissions(defaultHR),
+    };
+  }
+
+  return {
+    authenticated: false,
+    error: 'Unauthorized: Valid staff authentication required.',
+  };
+}

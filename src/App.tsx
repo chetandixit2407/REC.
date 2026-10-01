@@ -47,8 +47,18 @@ import {
 export default function App() {
   const [routePath, setRoutePath] = useState<string>(() => window.location.pathname);
   const [currentRole, setCurrentRole] = useState<UserRole>('HR');
-  const [currentUserId, setCurrentUserId] = useState<string>('usr-hr-1');
+  const [currentUserId, setCurrentUserId] = useState<string>('usr-hr-nisha');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [sessionToken, setSessionToken] = useState<string>('');
+
+  // Floating Realtime Intake Alert Toast
+  const [realtimeToast, setRealtimeToast] = useState<{
+    id: string;
+    title: string;
+    message: string;
+    candidateId?: string;
+    timestamp: string;
+  } | null>(null);
 
   // Application Data States
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -77,10 +87,43 @@ export default function App() {
   const [checkInToken, setCheckInToken] = useState<string>('WCR-APPT-901');
 
   // Staff Login State
-  const [loginEmail, setLoginEmail] = useState<string>('reception@whitecollarrealty.com');
+  const [loginEmail, setLoginEmail] = useState<string>('nisha@whitecollarrealty.com');
   const [loginPassword, setLoginPassword] = useState<string>('wcr123');
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loginSuccess, setLoginSuccess] = useState<string | null>(null);
+
+  // Initialize Authenticated Staff Session from backend on mount
+  useEffect(() => {
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && data.authenticated && data.user) {
+          setCurrentUser(data.user);
+          setCurrentRole(data.user.role);
+          setCurrentUserId(data.user.id);
+          if (data.session?.token) setSessionToken(data.session.token);
+        } else {
+          // Initialize active HR session
+          fetch('/api/auth/switch-role', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ role: 'HR' }),
+          })
+            .then((r) => r.json())
+            .then((sData) => {
+              if (sData.success) {
+                setCurrentUser(sData.user);
+                setCurrentRole(sData.user.role);
+                setCurrentUserId(sData.user.id);
+                if (sData.session?.token) setSessionToken(sData.session.token);
+              }
+            })
+            .catch((err) => console.warn('Session bootstrap error', err));
+        }
+      })
+      .catch((err) => console.warn('Auth check error', err));
+  }, []);
 
   // Listen to popstate for browser back/forward routing
   useEffect(() => {
@@ -131,15 +174,15 @@ export default function App() {
   const [routeCandidate, setRouteCandidate] = useState<Candidate | null>(null);
   const [routeCandidateLoading, setRouteCandidateLoading] = useState<boolean>(false);
 
-  // Fetch all live data from server
+  // Fetch all live data from server with authenticated credentials
   const fetchAllData = useCallback(async () => {
     try {
       const [cRes, iRes, rRes, nRes, pRes] = await Promise.all([
-        fetch(`/api/candidates?role=${currentRole}`),
-        fetch('/api/interviews'),
-        fetch('/api/rooms'),
-        fetch(`/api/notifications?role=${currentRole}&userId=${currentUserId}`),
-        fetch('/api/pantry/tasks'),
+        fetch(`/api/candidates?role=${currentRole}`, { credentials: 'include' }),
+        fetch('/api/interviews', { credentials: 'include' }),
+        fetch('/api/rooms', { credentials: 'include' }),
+        fetch(`/api/notifications?role=${currentRole}&userId=${currentUserId}`, { credentials: 'include' }),
+        fetch('/api/pantry/tasks', { credentials: 'include' }),
       ]);
 
       const [cData, iData, rData, nData, pData] = await Promise.all([
@@ -150,11 +193,11 @@ export default function App() {
         pRes.json(),
       ]);
 
-      if (cData.success) setCandidates(cData.candidates);
-      if (iData.success) setInterviews(iData.interviews);
-      if (rData.success) setRooms(rData.rooms);
-      if (nData.success) setNotifications(nData.notifications);
-      if (pData.success) setPantryTasks(pData.tasks);
+      if (cData.success && Array.isArray(cData.candidates)) setCandidates(cData.candidates);
+      if (iData.success && Array.isArray(iData.interviews)) setInterviews(iData.interviews);
+      if (rData.success && Array.isArray(rData.rooms)) setRooms(rData.rooms);
+      if (nData.success && Array.isArray(nData.notifications)) setNotifications(nData.notifications);
+      if (pData.success && Array.isArray(pData.tasks)) setPantryTasks(pData.tasks);
     } catch (err) {
       console.error('Failed fetching data snapshot', err);
     }
@@ -164,9 +207,35 @@ export default function App() {
   const { connected: isRealtimeConnected } = useRealtimeEvents({
     role: currentRole,
     userId: currentUserId,
+    sessionToken,
     onEvent: (event) => {
-      console.log('[REALTIME EVENT RECEIVED]', event);
-      // Seamless zero-refresh state update on any confirmed backend event!
+      console.log('[REALTIME EVENT RECEIVED ON DASHBOARD]', event);
+
+      // Trigger interactive intake alert banner if candidate arrived/submitted
+      if (
+        event.type === 'CANDIDATE_FORM_SUBMITTED' ||
+        event.type === 'CANDIDATE_ARRIVED'
+      ) {
+        const meta = event.payload?.metadata || event.payload;
+        const candName = meta?.candidateName || 'New Candidate';
+        const position = meta?.position || 'Job Applicant';
+        const candId = event.payload?.candidateId;
+
+        setRealtimeToast({
+          id: `toast-${Date.now()}`,
+          title: 'Candidate Intake Alert',
+          message: `${candName} (${position}) has submitted check-in. Intake queue updated.`,
+          candidateId: candId,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        });
+
+        // Auto-dismiss toast after 9 seconds
+        setTimeout(() => {
+          setRealtimeToast((prev) => (prev?.candidateId === candId ? null : prev));
+        }, 9000);
+      }
+
+      // Seamless zero-refresh authoritative state update on any backend event
       fetchAllData();
     },
   });
@@ -186,7 +255,9 @@ export default function App() {
         setRouteCandidate(existing);
       } else {
         setRouteCandidateLoading(true);
-        fetch(`/api/candidates/${encodeURIComponent(docCandidateId)}?role=${encodeURIComponent(currentRole)}`)
+        fetch(`/api/candidates/${encodeURIComponent(docCandidateId)}?role=${encodeURIComponent(currentRole)}`, {
+          credentials: 'include',
+        })
           .then((r) => {
             if (!r.ok) return { success: false };
             return r.json();
@@ -204,15 +275,27 @@ export default function App() {
     }
   }, [docCandidateId, candidates, currentRole]);
 
-  // Handle Role Switching
-  const handleSelectRole = (role: UserRole) => {
+  // Handle Role Persona Switching
+  const handleSelectRole = async (role: UserRole) => {
     setCurrentRole(role);
-    if (role === 'INTERVIEWER') setCurrentUserId('usr-int-1');
-    else if (role === 'ADMIN') setCurrentUserId('usr-admin-1');
-    else if (role === 'CEO') setCurrentUserId('usr-ceo-1');
-    else if (role === 'RECEPTION') setCurrentUserId('usr-rec-1');
-    else if (role === 'PANTRY') setCurrentUserId('usr-pan-1');
-    else setCurrentUserId('usr-hr-1');
+    try {
+      const res = await fetch('/api/auth/switch-role', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ role }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCurrentUser(data.user);
+        setCurrentUserId(data.user.id);
+        if (data.session?.token) {
+          setSessionToken(data.session.token);
+        }
+      }
+    } catch (err) {
+      console.warn('Role switch error', err);
+    }
   };
 
   // Staff Login Handler
@@ -225,6 +308,7 @@ export default function App() {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ email: loginEmail, password: loginPassword }),
       });
       const data = await res.json();
@@ -233,7 +317,11 @@ export default function App() {
       }
 
       setCurrentUser(data.user);
-      handleSelectRole(data.user.role);
+      setCurrentRole(data.user.role);
+      setCurrentUserId(data.user.id);
+      if (data.session?.token) {
+        setSessionToken(data.session.token);
+      }
       setLoginSuccess(`Signed in as ${data.user.name} (${data.user.role})`);
       setTimeout(() => {
         setActiveModal(null);
@@ -626,6 +714,44 @@ export default function App() {
 
       {/* Main Dashboard Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+        {/* Realtime Candidate Intake Alert Banner */}
+        {realtimeToast && (
+          <div className="p-4 bg-gradient-to-r from-amber-500/20 via-amber-600/15 to-purple-600/20 border border-amber-500/40 rounded-2xl shadow-xl flex items-center justify-between gap-3 text-xs animate-in fade-in slide-in-from-top-4 duration-300">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-bold shadow-md animate-bounce">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-black text-amber-300 uppercase tracking-wide">{realtimeToast.title}</span>
+                  <span className="text-[10px] text-slate-400 font-mono">({realtimeToast.timestamp})</span>
+                </div>
+                <p className="text-slate-200 font-medium mt-0.5">{realtimeToast.message}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {realtimeToast.candidateId && (
+                <button
+                  onClick={() => {
+                    setSelectedCandidateId(realtimeToast.candidateId!);
+                    setActiveModal('DOSSIER');
+                    setRealtimeToast(null);
+                  }}
+                  className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl transition shadow cursor-pointer text-xs"
+                >
+                  View Profile &rarr;
+                </button>
+              )}
+              <button
+                onClick={() => setRealtimeToast(null)}
+                className="p-1 text-slate-400 hover:text-white rounded-lg cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Interactive Testing Quick Launcher Strip */}
         <div className="p-4 bg-gradient-to-r from-slate-900 via-slate-900 to-amber-950/30 border border-slate-800 rounded-3xl flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 text-xs shadow-xl">
           <div className="space-y-1">

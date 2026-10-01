@@ -7,16 +7,21 @@ import type {
   TimelineEvent,
   AuditLog,
   UserRole,
-  NotificationAction,
+  StaffSession,
+  DomainEvent,
+  DomainEventType,
   CandidateResumeMetadata,
 } from '../types/index.ts';
 
-// SSE client subscriber interface
+// SSE client subscriber interface with verified staff session
 export interface SSEClient {
   id: string;
+  session: StaffSession;
   role: UserRole;
-  userId?: string;
+  userId: string;
   res: any;
+  connectedAt: string;
+  lastPing: number;
 }
 
 class EventWorkflowEngine {
@@ -24,35 +29,207 @@ class EventWorkflowEngine {
 
   public subscribeClient(client: SSEClient) {
     this.sseClients.set(client.id, client);
-    console.log(`[SSE] Client subscribed: ${client.id} (Role: ${client.role})`);
+    console.log(
+      `[REALTIME] connection opened & authenticated: ${client.id} | User: ${client.session.name} (${client.userId}) | Role: ${client.role}`
+    );
   }
 
   public unsubscribeClient(clientId: string) {
-    this.sseClients.delete(clientId);
-    console.log(`[SSE] Client disconnected: ${clientId}`);
+    const client = this.sseClients.get(clientId);
+    if (client) {
+      console.log(
+        `[REALTIME] connection closed: ${clientId} | User: ${client.session.name} (${client.userId})`
+      );
+      this.sseClients.delete(clientId);
+    }
   }
 
+  public getConnectedClientsCount(): number {
+    return this.sseClients.size;
+  }
+
+  /**
+   * Broadcast helper that delegates to publishDomainEvent
+   */
   public broadcast(event: {
     type: string;
     payload?: any;
     targetRoles?: UserRole[];
     targetUserId?: string;
   }) {
-    const dataString = `data: ${JSON.stringify(event)}\n\n`;
+    return this.publishDomainEvent({
+      eventType: event.type as DomainEventType,
+      candidateId: event.payload?.candidateId,
+      visitId: event.payload?.visitId,
+      applicationId: event.payload?.applicationId,
+      interviewId: event.payload?.interviewId,
+      roomId: event.payload?.roomId,
+      taskId: event.payload?.taskId,
+      actorType: 'STAFF',
+      source: 'STAFF_ACTION',
+      targetRoles: event.targetRoles,
+      targetUserId: event.targetUserId,
+      metadata: event.payload,
+    });
+  }
+
+  /**
+   * Authoritative Domain Event Publisher with Database Persistence & Role-Based Filtering
+   */
+  public publishDomainEvent(eventData: {
+    eventType: DomainEventType;
+    candidateId?: string;
+    visitId?: string;
+    applicationId?: string;
+    interviewId?: string;
+    roomId?: string;
+    taskId?: string;
+    registrationSessionId?: string;
+    actorType: 'SYSTEM' | 'CANDIDATE' | 'STAFF' | 'USER';
+    source: 'CANDIDATE_REGISTRATION' | 'STAFF_ACTION' | 'WORKFLOW_ENGINE';
+    targetRoles?: UserRole[];
+    targetUserId?: string;
+    metadata?: Record<string, any>;
+  }): DomainEvent {
+    const timestamp = new Date().toISOString();
+    const eventId = `evt-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+    const domainEvent: DomainEvent = {
+      eventId,
+      eventType: eventData.eventType,
+      candidateId: eventData.candidateId,
+      visitId: eventData.visitId || eventData.candidateId,
+      applicationId: eventData.applicationId || eventData.candidateId,
+      interviewId: eventData.interviewId,
+      roomId: eventData.roomId,
+      taskId: eventData.taskId,
+      registrationSessionId: eventData.registrationSessionId,
+      timestamp,
+      actorType: eventData.actorType,
+      source: eventData.source,
+      targetRoles: eventData.targetRoles,
+      targetUserId: eventData.targetUserId,
+      metadata: eventData.metadata || {},
+    };
+
+    console.log(`[EVENT] event created: ${domainEvent.eventType} | ID: ${domainEvent.eventId}`);
+
+    // Persist event into database domainEvents ring-buffer
+    try {
+      dbService.update((draft) => {
+        draft.domainEvents = draft.domainEvents || [];
+        draft.domainEvents.unshift(domainEvent);
+        // Keep last 1000 domain events in persistence
+        if (draft.domainEvents.length > 1000) {
+          draft.domainEvents = draft.domainEvents.slice(0, 1000);
+        }
+      });
+      console.log(`[EVENT] event persisted: ${domainEvent.eventId} to authoritative storage`);
+    } catch (err) {
+      console.error(`[EVENT] Failed persisting domain event ${domainEvent.eventId}`, err);
+    }
+
+    // Deliver to connected authenticated staff SSE clients
+    let deliveredCount = 0;
     for (const [id, client] of this.sseClients.entries()) {
-      if (event.targetUserId && client.userId && client.userId !== event.targetUserId) {
+      // 1. Target user filter
+      if (domainEvent.targetUserId && client.userId && client.userId !== domainEvent.targetUserId) {
         continue;
       }
-      if (event.targetRoles && !event.targetRoles.includes(client.role)) {
+
+      // 2. Target roles filter
+      if (domainEvent.targetRoles && !domainEvent.targetRoles.includes(client.role)) {
         continue;
       }
+
+      // 3. Role authorization check: Pantry must NEVER receive candidate confidential profile data
+      if (client.role === 'PANTRY' && domainEvent.eventType === 'CANDIDATE_FORM_SUBMITTED') {
+        // Pantry does not receive raw candidate intake events
+        continue;
+      }
+
+      // Format role-safe sanitized payload
+      const sanitizedPayload: any = {
+        eventId: domainEvent.eventId,
+        eventType: domainEvent.eventType,
+        candidateId: domainEvent.candidateId,
+        visitId: domainEvent.visitId,
+        applicationId: domainEvent.applicationId,
+        interviewId: domainEvent.interviewId,
+        roomId: domainEvent.roomId,
+        taskId: domainEvent.taskId,
+        registrationSessionId: domainEvent.registrationSessionId,
+        timestamp: domainEvent.timestamp,
+        actorType: domainEvent.actorType,
+        source: domainEvent.source,
+        metadata: { ...domainEvent.metadata },
+      };
+
+      // Strip sensitive details if delivering to Reception or Pantry
+      if (client.role === 'RECEPTION' || client.role === 'PANTRY') {
+        if (sanitizedPayload.metadata) {
+          delete sanitizedPayload.metadata.salary;
+          delete sanitizedPayload.metadata.expectedSalary;
+          delete sanitizedPayload.metadata.hrNotes;
+          delete sanitizedPayload.metadata.hrPrivateNotes;
+          delete sanitizedPayload.metadata.governmentIdNumber;
+        }
+      }
+
+      const sseMessage = `data: ${JSON.stringify({ type: domainEvent.eventType, payload: sanitizedPayload, eventId: domainEvent.eventId, timestamp: domainEvent.timestamp })}\n\n`;
+
       try {
-        client.res.write(dataString);
+        client.res.write(sseMessage);
+        deliveredCount++;
+        console.log(
+          `[DASHBOARD] recipient resolved: ${client.session.name} (${client.role}) | event delivered: ${domainEvent.eventId}`
+        );
       } catch (err) {
-        console.error(`[SSE] Failed writing to client ${id}`, err);
+        console.error(`[DASHBOARD] Failed delivering event to client ${id}`, err);
         this.sseClients.delete(id);
       }
     }
+
+    console.log(
+      `[EVENT] event published: ${domainEvent.eventType} (${domainEvent.eventId}) -> delivered to ${deliveredCount} active dashboards`
+    );
+
+    return domainEvent;
+  }
+
+  /**
+   * Resync missed events for reconnected clients
+   */
+  public getMissedEvents(
+    sinceTimestamp?: string,
+    lastEventId?: string,
+    role: UserRole = 'HR'
+  ): DomainEvent[] {
+    const db = dbService.get();
+    const events = db.domainEvents || [];
+    if (!events.length) return [];
+
+    let filtered = events;
+
+    if (sinceTimestamp) {
+      const sinceTime = new Date(sinceTimestamp).getTime();
+      filtered = filtered.filter((e) => new Date(e.timestamp).getTime() > sinceTime);
+    } else if (lastEventId) {
+      const idx = filtered.findIndex((e) => e.eventId === lastEventId);
+      if (idx !== -1) {
+        filtered = filtered.slice(0, idx);
+      }
+    } else {
+      // Default return latest 50
+      filtered = filtered.slice(0, 50);
+    }
+
+    // Role filter
+    return filtered.filter((e) => {
+      if (e.targetRoles && !e.targetRoles.includes(role)) return false;
+      if (role === 'PANTRY' && e.eventType === 'CANDIDATE_FORM_SUBMITTED') return false;
+      return true;
+    });
   }
 
   // 1. CANDIDATE ARRIVAL & CHECK-IN EVENT
@@ -67,7 +244,7 @@ class EventWorkflowEngine {
     notificationsToCreate.push({
       id: `notif-${Date.now()}-hr`,
       recipientRole: 'HR',
-      title: 'Candidate Arrived for Interview',
+      title: 'New Candidate Checked In',
       message: `${candidate.fullName} has arrived for ${candidate.position} (${interview?.roundName || 'Interview'}). Scheduled: ${interview?.scheduledTime || 'Walk-in'}.`,
       priority: 'HIGH',
       eventType: 'CANDIDATE_ARRIVED',
@@ -101,7 +278,7 @@ class EventWorkflowEngine {
     notificationsToCreate.push({
       id: `notif-${Date.now()}-admin`,
       recipientRole: 'ADMIN',
-      title: 'Candidate Arrived',
+      title: 'Candidate Checked In',
       message: `${candidate.fullName} checked in for ${candidate.position}. Status: Waiting in Reception.`,
       priority: 'HIGH',
       eventType: 'CANDIDATE_ARRIVED',
@@ -129,7 +306,7 @@ class EventWorkflowEngine {
       id: `notif-${Date.now()}-ceo`,
       recipientRole: 'CEO',
       title: 'Candidate Arrived for Interview',
-      message: `${candidate.fullName} (${candidate.position}) is in reception for ${interview?.roundName || 'Executive Assessment'}.`,
+      message: `${candidate.fullName} (${candidate.position}) is in reception for ${interview?.roundName || 'Assessment'}.`,
       priority: 'NORMAL',
       eventType: 'CANDIDATE_ARRIVED',
       entityId: candidate.id,
@@ -143,10 +320,34 @@ class EventWorkflowEngine {
         candidateName: candidate.fullName,
         position: candidate.position,
         stage: interview?.roundName || 'Round 1',
-        interviewer: interview?.interviewerName || 'Nisha Verma',
+        interviewer: interview?.interviewerName || 'Interview Panel',
         scheduled: interview?.scheduledTime || 'Today',
         arrived: timeFormatted,
         currentStatus: 'Waiting in Reception',
+      },
+    });
+
+    // CO-FOUNDER Notification
+    notificationsToCreate.push({
+      id: `notif-${Date.now()}-cofounder`,
+      recipientRole: 'CO_FOUNDER',
+      title: 'Candidate Arrived for Interview',
+      message: `${candidate.fullName} (${candidate.position}) checked in at Reception.`,
+      priority: 'NORMAL',
+      eventType: 'CANDIDATE_ARRIVED',
+      entityId: candidate.id,
+      entityType: 'CANDIDATE',
+      read: false,
+      createdAt: timestamp,
+      actionButtons: [
+        { label: 'View Profile', actionKey: 'VIEW_CANDIDATE', payload: { candidateId: candidate.id } },
+      ],
+      payload: {
+        candidateName: candidate.fullName,
+        position: candidate.position,
+        stage: interview?.roundName || 'Round 1',
+        interviewer: interview?.interviewerName || 'Interview Panel',
+        arrived: timeFormatted,
       },
     });
 
@@ -187,7 +388,7 @@ class EventWorkflowEngine {
       id: `notif-${Date.now()}-rec`,
       recipientRole: 'RECEPTION',
       title: 'Candidate Arrived at Front Desk',
-      message: `${candidate.fullName} self checked-in for ${candidate.position}. Direct to Waiting Lounge.`,
+      message: `${candidate.fullName} checked in for ${candidate.position}. Direct to Waiting Lounge.`,
       priority: 'HIGH',
       eventType: 'CANDIDATE_ARRIVED',
       entityId: candidate.id,
@@ -200,7 +401,7 @@ class EventWorkflowEngine {
       payload: {
         candidateName: candidate.fullName,
         position: candidate.position,
-        interviewer: interview?.interviewerName || 'Nisha Verma',
+        interviewer: interview?.interviewerName || 'Interviewer',
         status: 'Waiting in Lounge',
         action: 'Guide candidate to waiting area lounge and offer comfort',
         arrived: timeFormatted,
@@ -208,14 +409,10 @@ class EventWorkflowEngine {
       },
     });
 
-    // NOTE: Pantry is NOT notified at arrival according to prompt requirement #20 and #54!
-
     // Step B: Update Database & Timeline
     dbService.update((draft) => {
-      // Append notifications
       draft.notifications.unshift(...notificationsToCreate);
 
-      // Add Timeline entry
       draft.timelineEvents.unshift(
         {
           id: `tl-${Date.now()}-submit`,
@@ -237,7 +434,6 @@ class EventWorkflowEngine {
         }
       );
 
-      // Add System Audit Log
       draft.auditLogs.unshift({
         id: `aud-${Date.now()}`,
         timestamp,
@@ -251,14 +447,21 @@ class EventWorkflowEngine {
     });
 
     // Step C: Real-time broadcast
-    this.broadcast({
-      type: 'CANDIDATE_ARRIVED',
-      payload: {
-        candidateId: candidate.id,
+    this.publishDomainEvent({
+      eventType: 'CANDIDATE_ARRIVED',
+      candidateId: candidate.id,
+      interviewId: interview?.id,
+      registrationSessionId: checkInSessionToken,
+      actorType: 'CANDIDATE',
+      source: 'CANDIDATE_REGISTRATION',
+      targetRoles: ['HR', 'ADMIN', 'CEO', 'CO_FOUNDER', 'INTERVIEWER', 'RECEPTION'],
+      metadata: {
         candidateName: candidate.fullName,
         position: candidate.position,
-        interviewId: interview?.id,
+        department: candidate.department,
         status: candidate.status,
+        currentLocation: candidate.currentLocation,
+        arrivalTime: timestamp,
       },
     });
   }
@@ -279,6 +482,7 @@ class EventWorkflowEngine {
     let interviewerId = '';
     let interviewerName = '';
     let position = '';
+    let pantryTaskId = '';
 
     dbService.update((draft) => {
       const room = draft.rooms.find((r) => r.id === roomId);
@@ -294,7 +498,6 @@ class EventWorkflowEngine {
       }
 
       // Backend Double-Booking Protection:
-      // Ensure the room is not already occupied/assigned to another active candidate
       if (
         (room.status === 'OCCUPIED' || room.status === 'ASSIGNED') &&
         room.currentCandidateId &&
@@ -345,8 +548,9 @@ class EventWorkflowEngine {
 
       // 4. Automatically create Pantry Preparation Task
       if (draft.settings.autoAssignPantryOnRoom) {
+        pantryTaskId = `pantry-task-${Date.now()}`;
         const pantryTask: PantryTask = {
-          id: `pantry-task-${Date.now()}`,
+          id: pantryTaskId,
           roomId: room.id,
           roomName: room.name,
           candidateName: cand.fullName,
@@ -458,24 +662,47 @@ class EventWorkflowEngine {
         actorName: hrName,
         actorRole: 'HR',
         action: 'ASSIGN_ROOM',
-        details: `Assigned room ${room.name} (${room.id}) to candidate ${cand.fullName} (${cand.id}). Automated 9 downstream workflow tasks.`,
+        details: `Assigned room ${room.name} (${room.id}) to candidate ${cand.fullName} (${cand.id}). Automated downstream workflow tasks.`,
         entityId: room.id,
         entityType: 'ROOM',
       });
     });
 
-    // Broadcast Real-time
-    this.broadcast({
-      type: 'ROOM_ASSIGNED',
-      payload: {
-        candidateId,
+    // Broadcast Real-time Domain Event
+    this.publishDomainEvent({
+      eventType: 'ROOM_ASSIGNED',
+      candidateId,
+      interviewId,
+      roomId,
+      actorType: 'STAFF',
+      source: 'STAFF_ACTION',
+      metadata: {
         candidateName,
         roomId,
         roomName,
         interviewerId,
         interviewerName,
+        status: 'ROOM_ASSIGNED',
       },
     });
+
+    if (pantryTaskId) {
+      this.publishDomainEvent({
+        eventType: 'PANTRY_TASK_CREATED',
+        taskId: pantryTaskId,
+        roomId,
+        candidateId,
+        actorType: 'SYSTEM',
+        source: 'WORKFLOW_ENGINE',
+        targetRoles: ['PANTRY', 'ADMIN', 'HR'],
+        metadata: {
+          taskId: pantryTaskId,
+          roomName,
+          candidateName,
+          taskType: 'ROOM_PREP',
+        },
+      });
+    }
   }
 
   // 3. PANTRY COMPLETES PREPARATION
@@ -510,7 +737,6 @@ class EventWorkflowEngine {
         });
       }
 
-      // Add audit log
       draft.auditLogs.unshift({
         id: `aud-${Date.now()}`,
         timestamp,
@@ -524,9 +750,13 @@ class EventWorkflowEngine {
       });
     });
 
-    this.broadcast({
-      type: 'PANTRY_TASK_COMPLETED',
-      payload: { taskId, roomId, roomName, candidateName },
+    this.publishDomainEvent({
+      eventType: 'PANTRY_TASK_COMPLETED',
+      taskId,
+      roomId,
+      actorType: 'STAFF',
+      source: 'STAFF_ACTION',
+      metadata: { taskId, roomId, roomName, candidateName, stewardName },
     });
   }
 
@@ -536,6 +766,7 @@ class EventWorkflowEngine {
     let candId = '';
     let candName = '';
     let roomName = '';
+    let roomId = '';
 
     dbService.update((draft) => {
       const intv = draft.interviews.find((i) => i.id === interviewId);
@@ -552,6 +783,7 @@ class EventWorkflowEngine {
       }
 
       if (intv.roomId) {
+        roomId = intv.roomId;
         const room = draft.rooms.find((r) => r.id === intv.roomId);
         if (room) {
           room.status = 'OCCUPIED';
@@ -582,9 +814,14 @@ class EventWorkflowEngine {
       });
     });
 
-    this.broadcast({
-      type: 'INTERVIEW_STARTED',
-      payload: { interviewId, candidateId: candId, candidateName: candName, roomName },
+    this.publishDomainEvent({
+      eventType: 'INTERVIEW_STARTED',
+      interviewId,
+      candidateId: candId,
+      roomId,
+      actorType: 'STAFF',
+      source: 'STAFF_ACTION',
+      metadata: { interviewId, candidateId: candId, candidateName: candName, roomName, interviewerName },
     });
   }
 
@@ -603,6 +840,7 @@ class EventWorkflowEngine {
     let previousRoomId = '';
     let previousRoomName = '';
     let nextInterviewerName = '';
+    let newInterviewId = '';
 
     dbService.update((draft) => {
       const intv = draft.interviews.find((i) => i.id === interviewId);
@@ -621,14 +859,12 @@ class EventWorkflowEngine {
 
       if (room) {
         previousRoomName = room.name;
-        // Release room and mark for cleaning/reset
         room.status = 'AVAILABLE';
         room.currentCandidateId = undefined;
         room.currentCandidateName = undefined;
         room.currentInterviewId = undefined;
         room.assignedInterviewerName = undefined;
 
-        // Auto create Pantry Reset Task
         draft.pantryTasks.unshift({
           id: `pantry-reset-${Date.now()}`,
           roomId: room.id,
@@ -643,14 +879,13 @@ class EventWorkflowEngine {
         });
       }
 
-      // Check Outcome
       if (outcome === 'NEXT_INTERVIEW') {
         const nextIntvUser = draft.users.find((u) => u.id === nextInterviewerId);
         nextInterviewerName = nextIntvUser?.name || 'Next Interviewer';
+        newInterviewId = `intv-${Date.now()}`;
 
-        // Create Next Interview Record
         const newIntv: Interview = {
-          id: `intv-${Date.now()}`,
+          id: newInterviewId,
           candidateId: candId,
           candidateName: candName,
           position: cand?.position || intv.position,
@@ -670,7 +905,6 @@ class EventWorkflowEngine {
           cand.currentInterviewId = newIntv.id;
         }
 
-        // Notify Next Interviewer
         if (nextInterviewerId) {
           draft.notifications.unshift({
             id: `notif-${Date.now()}-next-intv`,
@@ -690,7 +924,6 @@ class EventWorkflowEngine {
           });
         }
 
-        // Notify HR
         draft.notifications.unshift({
           id: `notif-${Date.now()}-hr-next`,
           recipientRole: 'HR',
@@ -717,13 +950,11 @@ class EventWorkflowEngine {
           description: `Candidate advanced to ${newIntv.roundName} with ${nextInterviewerName}. Candidate moved back to Waiting Lounge.`,
         });
       } else {
-        // FINAL OUTCOME: SELECTED, REJECTED, or HOLD
         if (cand) {
           cand.status = outcome === 'SELECTED' ? 'OFFERED' : outcome === 'REJECTED' ? 'REJECTED' : 'COMPLETED';
           cand.currentLocation = 'Reception - Awaiting Checkout';
         }
 
-        // Reception Checkout Alert
         draft.notifications.unshift({
           id: `notif-${Date.now()}-rec-co`,
           recipientRole: 'RECEPTION',
@@ -758,20 +989,25 @@ class EventWorkflowEngine {
         actorName: interviewerName,
         actorRole: 'INTERVIEWER',
         action: 'COMPLETE_INTERVIEW',
-        details: `Concluded interview ${interviewId} for ${candName} with outcome ${outcome}. Notes: "${notes.substring(0, 50)}..."`,
+        details: `Concluded interview ${interviewId} for ${candName} with outcome ${outcome}.`,
         entityId: interviewId,
         entityType: 'INTERVIEW',
       });
     });
 
-    this.broadcast({
-      type: 'INTERVIEW_COMPLETED',
-      payload: {
+    this.publishDomainEvent({
+      eventType: 'INTERVIEW_COMPLETED',
+      interviewId,
+      candidateId: candId,
+      actorType: 'STAFF',
+      source: 'STAFF_ACTION',
+      metadata: {
         interviewId,
         candidateId: candId,
         candidateName: candName,
         outcome,
         previousRoomName,
+        nextInterviewId: newInterviewId || undefined,
       },
     });
   }
@@ -821,13 +1057,16 @@ class EventWorkflowEngine {
       });
     });
 
-    this.broadcast({
-      type: 'VISITOR_CHECKED_OUT',
-      payload: { candidateId, candidateName: candName, durationMinutes },
+    this.publishDomainEvent({
+      eventType: 'CANDIDATE_CHECKED_OUT',
+      candidateId,
+      actorType: 'STAFF',
+      source: 'STAFF_ACTION',
+      metadata: { candidateId, candidateName: candName, durationMinutes },
     });
   }
 
-  onCandidateLivePhotoCaptured(
+  public onCandidateLivePhotoCaptured(
     candidateId: string,
     arrivalPhoto: string,
     capturedBy: string,
@@ -872,25 +1111,21 @@ class EventWorkflowEngine {
       });
     });
 
-    this.broadcast({
-      type: 'CANDIDATE_LIVE_PHOTO_CAPTURED',
-      payload: {
+    this.publishDomainEvent({
+      eventType: 'CANDIDATE_LIVE_PHOTO_CAPTURED',
+      candidateId,
+      actorType: 'STAFF',
+      source: 'STAFF_ACTION',
+      metadata: {
         candidateId,
         candidateName: candName,
-        arrivalPhoto,
         capturedAt: timestamp,
-        capturedBy,
         capturedByName,
       },
     });
-
-    this.broadcast({
-      type: 'DASHBOARD_UPDATE',
-      payload: { action: 'CANDIDATE_PHOTO_UPDATED', candidateId },
-    });
   }
 
-  onCandidateResumeUploaded(candidateId: string, resumeMetadata: CandidateResumeMetadata) {
+  public onCandidateResumeUploaded(candidateId: string, resumeMetadata: CandidateResumeMetadata) {
     const timestamp = new Date().toISOString();
     let candName = 'Candidate';
 
@@ -921,25 +1156,24 @@ class EventWorkflowEngine {
           actorType: 'USER',
           actorName: candName,
           action: 'UPLOAD_RESUME',
-          details: `Candidate ${candName} (${candidateId}) uploaded resume "${resumeMetadata.originalFileName}". Storage key: ${resumeMetadata.storageKey || 'N/A'}.`,
+          details: `Candidate ${candName} (${candidateId}) uploaded resume "${resumeMetadata.originalFileName}".`,
           entityId: candidateId,
           entityType: 'CANDIDATE',
         });
       }
     });
 
-    this.broadcast({
-      type: 'CANDIDATE_RESUME_UPLOADED',
-      payload: {
+    this.publishDomainEvent({
+      eventType: 'CANDIDATE_RESUME_UPLOADED',
+      candidateId,
+      actorType: 'CANDIDATE',
+      source: 'CANDIDATE_REGISTRATION',
+      metadata: {
         candidateId,
         candidateName: candName,
-        resumeMetadata,
+        fileName: resumeMetadata.originalFileName,
+        fileSize: resumeMetadata.fileSize,
       },
-    });
-
-    this.broadcast({
-      type: 'DASHBOARD_UPDATE',
-      payload: { action: 'CANDIDATE_RESUME_UPDATED', candidateId },
     });
   }
 }

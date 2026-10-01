@@ -7,7 +7,17 @@ import { fileURLToPath } from 'url';
 import { dbService } from './src/server/db.ts';
 import { eventWorkflowEngine } from './src/server/workflowEngine.ts';
 import { validationEngine } from './src/server/validationEngine.ts';
-import { verifyPassword, hashPassword, ROLE_PERMISSIONS } from './src/server/auth.ts';
+import {
+  verifyPassword,
+  hashPassword,
+  ROLE_PERMISSIONS,
+  createStaffSession,
+  getStaffSession,
+  revokeStaffSession,
+  authenticateStaffRequest,
+  calculateEffectivePermissions,
+  parseCookies,
+} from './src/server/auth.ts';
 import type {
   Candidate,
   CheckInSession,
@@ -22,6 +32,9 @@ import type {
   GovernmentIdDocument,
   CandidateValidationResult,
   PasswordResetRequest,
+  StaffSession,
+  DomainEvent,
+  DomainEventType,
 } from './src/types/index.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -172,36 +185,150 @@ async function startServer() {
   });
 
   // ==========================================
-  // REAL-TIME SERVER-SENT EVENTS (SSE) ROUTE
+  // REAL-TIME SERVER-SENT EVENTS (SSE) ROUTE (PROTECTED STAFF STREAM)
   // ==========================================
   app.get('/api/events', (req: Request, res: Response) => {
-    const role = (req.query.role as UserRole) || 'HR';
-    const userId = (req.query.userId as string) || '';
-    const clientId = `client-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const db = dbService.get();
+    const auth = authenticateStaffRequest(req, db.users);
+
+    if (!auth.authenticated || !auth.user || !auth.session) {
+      console.warn(`[REALTIME] connection rejected: Unauthenticated attempt from ${req.ip}`);
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized: Valid staff authentication required for real-time dashboard events.',
+      });
+    }
+
+    const clientId = `client-${auth.user.id}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
+      'Cache-Control': 'no-cache, no-transform',
       Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
     });
 
-    res.write(`data: ${JSON.stringify({ type: 'CONNECTED', clientId, role })}\n\n`);
+    res.write(
+      `data: ${JSON.stringify({
+        type: 'CONNECTED',
+        clientId,
+        user: {
+          id: auth.user.id,
+          name: auth.user.name,
+          role: auth.user.role,
+        },
+        sessionToken: auth.session.token,
+        permissions: auth.effectivePermissions,
+        timestamp: new Date().toISOString(),
+      })}\n\n`
+    );
 
     eventWorkflowEngine.subscribeClient({
       id: clientId,
-      role,
-      userId,
+      session: auth.session,
+      role: auth.user.role,
+      userId: auth.user.id,
       res,
+      connectedAt: new Date().toISOString(),
+      lastPing: Date.now(),
     });
 
-    // Keepalive ping every 15s
+    // Keepalive ping every 15s to prevent intermediate proxy timeout
     const pingInterval = setInterval(() => {
-      res.write(': ping\n\n');
+      try {
+        res.write(': ping\n\n');
+      } catch (e) {
+        clearInterval(pingInterval);
+        eventWorkflowEngine.unsubscribeClient(clientId);
+      }
     }, 15000);
 
     req.on('close', () => {
       clearInterval(pingInterval);
       eventWorkflowEngine.unsubscribeClient(clientId);
+    });
+  });
+
+  // Reconnect / Missed Event Resync
+  app.get('/api/events/resync', (req: Request, res: Response) => {
+    const db = dbService.get();
+    const auth = authenticateStaffRequest(req, db.users);
+
+    if (!auth.authenticated || !auth.user) {
+      return res.status(401).json({ success: false, error: 'Unauthorized: Staff session required.' });
+    }
+
+    const since = req.query.since as string;
+    const lastEventId = req.query.lastEventId as string;
+    const missed = eventWorkflowEngine.getMissedEvents(since, lastEventId, auth.user.role);
+
+    res.json({
+      success: true,
+      events: missed,
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  // ==========================================
+  // STAFF IDENTITY & SESSION VALIDATION
+  // ==========================================
+  app.get('/api/auth/me', (req: Request, res: Response) => {
+    const db = dbService.get();
+    const auth = authenticateStaffRequest(req, db.users);
+
+    if (!auth.authenticated || !auth.user || !auth.session) {
+      return res.status(401).json({
+        success: false,
+        authenticated: false,
+        error: 'No active staff session.',
+      });
+    }
+
+    const { passwordHash: _, ...safeUser } = auth.user;
+    res.json({
+      success: true,
+      authenticated: true,
+      user: safeUser,
+      role: auth.user.role,
+      session: {
+        sessionId: auth.session.sessionId,
+        token: auth.session.token,
+        expiresAt: auth.session.expiresAt,
+      },
+      permissions: auth.effectivePermissions || ROLE_PERMISSIONS[auth.user.role] || [],
+    });
+  });
+
+  // Staff Persona Role Switching
+  app.post('/api/auth/switch-role', (req: Request, res: Response) => {
+    const { role, userId } = req.body;
+    const db = dbService.get();
+
+    let targetUser = userId ? db.users.find((u) => u.id === userId && u.isActive !== false) : null;
+    if (!targetUser && role) {
+      targetUser = db.users.find((u) => u.role === (role as UserRole) && u.isActive !== false) || null;
+    }
+
+    if (!targetUser) {
+      targetUser = db.users[0];
+    }
+
+    const session = createStaffSession(targetUser, req.ip);
+    res.setHeader('Set-Cookie', `wcr_session=${session.token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800`);
+
+    const { passwordHash: _, ...safeUser } = targetUser;
+    console.log(`[AUTH] staff authenticated persona switch: ${targetUser.name} (${targetUser.role})`);
+
+    res.json({
+      success: true,
+      user: safeUser,
+      role: targetUser.role,
+      session: {
+        sessionId: session.sessionId,
+        token: session.token,
+        expiresAt: session.expiresAt,
+      },
+      permissions: session.permissions,
     });
   });
 
@@ -716,38 +843,29 @@ async function startServer() {
         throw new Error('Failed to persist candidate');
       }
 
-      // Realtime event broadcasting
-      eventWorkflowEngine.broadcast({
-        type: 'CANDIDATE_FORM_SUBMITTED',
-        payload: {
-          candidateId: (savedCandidate as Candidate).id,
+      // 7 & 9: Create and publish authoritative domain event
+      eventWorkflowEngine.publishDomainEvent({
+        eventType: 'CANDIDATE_FORM_SUBMITTED',
+        candidateId: (savedCandidate as Candidate).id,
+        visitId: (savedCandidate as Candidate).id,
+        applicationId: (savedCandidate as Candidate).id,
+        interviewId: relatedInterview?.id,
+        registrationSessionId: token,
+        actorType: 'CANDIDATE',
+        source: 'CANDIDATE_REGISTRATION',
+        targetRoles: ['HR', 'ADMIN', 'CEO', 'CO_FOUNDER', 'INTERVIEWER', 'RECEPTION'],
+        metadata: {
           candidateName: (savedCandidate as Candidate).fullName,
           position: (savedCandidate as Candidate).position,
-          timestamp,
+          department: (savedCandidate as Candidate).department,
+          status: (savedCandidate as Candidate).status,
+          currentLocation: (savedCandidate as Candidate).currentLocation,
+          arrivalTime: timestamp,
+          interviewRound: relatedInterview?.roundName || 'Round 1',
         },
       });
 
-      eventWorkflowEngine.broadcast({
-        type: 'CANDIDATE_VALIDATION_COMPLETED',
-        payload: {
-          candidateId: (savedCandidate as Candidate).id,
-          candidateName: (savedCandidate as Candidate).fullName,
-          overallStatus: validationResult.overallStatus,
-          summary: validationResult.summary,
-          timestamp,
-        },
-      });
-
-      eventWorkflowEngine.broadcast({
-        type: 'REGISTRATION_SESSION_COMPLETED',
-        payload: {
-          token,
-          candidateId: (savedCandidate as Candidate).id,
-          completedAt: timestamp,
-        },
-      });
-
-      // Execute Workflow Engine Rules & Role-based Alerting
+      // 10: Create and persist role-based notifications & alerts
       eventWorkflowEngine.handleCandidateCheckIn(savedCandidate, relatedInterview, token);
 
       res.json({
@@ -1317,27 +1435,29 @@ async function startServer() {
 
       if (!savedCandidate) throw new Error('Failed to persist candidate');
 
-      // Real-time Event Broadcaster
-      eventWorkflowEngine.broadcast({
-        type: 'CANDIDATE_FORM_SUBMITTED',
-        payload: {
-          candidateId: (savedCandidate as Candidate).id,
+      // 7 & 9: Create and publish authoritative domain event
+      eventWorkflowEngine.publishDomainEvent({
+        eventType: 'CANDIDATE_FORM_SUBMITTED',
+        candidateId: (savedCandidate as Candidate).id,
+        visitId: (savedCandidate as Candidate).id,
+        applicationId: (savedCandidate as Candidate).id,
+        interviewId: relatedInterview?.id,
+        registrationSessionId: token,
+        actorType: 'CANDIDATE',
+        source: 'CANDIDATE_REGISTRATION',
+        targetRoles: ['HR', 'ADMIN', 'CEO', 'CO_FOUNDER', 'INTERVIEWER', 'RECEPTION'],
+        metadata: {
           candidateName: (savedCandidate as Candidate).fullName,
           position: (savedCandidate as Candidate).position,
-          timestamp,
+          department: (savedCandidate as Candidate).department,
+          status: (savedCandidate as Candidate).status,
+          currentLocation: (savedCandidate as Candidate).currentLocation,
+          arrivalTime: timestamp,
+          interviewRound: relatedInterview?.roundName || 'Round 1',
         },
       });
 
-      eventWorkflowEngine.broadcast({
-        type: 'REGISTRATION_SESSION_COMPLETED',
-        payload: {
-          token,
-          candidateId: (savedCandidate as Candidate).id,
-          completedAt: timestamp,
-        },
-      });
-
-      // Trigger Workflow Engine for role-based alerts & real-time updates
+      // 10: Trigger Workflow Engine for role-based alerts & notifications
       eventWorkflowEngine.handleCandidateCheckIn(savedCandidate, relatedInterview, token);
 
       res.json({
@@ -1383,14 +1503,30 @@ async function startServer() {
   // ==========================================
   const handleGovernmentIdRequest = (req: Request, res: Response, isDownload = false) => {
     const { candidateId } = req.params;
-    const role = (req.headers['x-user-role'] || req.query.role) as UserRole;
-    const userName = (req.headers['x-user-name'] as string) || (req.query.userName as string) || (role === 'HR' ? 'Sneha Patel (HR)' : `${role} User`);
+    const db = dbService.get();
+    const auth = authenticateStaffRequest(req, db.users);
 
-    if (!role || !['HR', 'ADMIN', 'CEO', 'INTERVIEWER', 'RECEPTION'].includes(role) || role === 'PANTRY') {
+    if (!auth.authenticated || !auth.user) {
+      console.warn(`[AUTH] candidate document access denied: unauthenticated attempt for ${candidateId}`);
+      return res.status(401).json({ success: false, error: 'Unauthorized: Staff authentication required to access Government ID documents.' });
+    }
+
+    const role = auth.user.role;
+    const permissions = auth.effectivePermissions || [];
+    const hasGovIdPermission =
+      permissions.includes('ALL_PERMISSIONS') ||
+      permissions.includes('FULL_ACCESS') ||
+      permissions.includes('candidate.government_id.view') ||
+      permissions.includes('candidate.documents.view') ||
+      permissions.includes('VIEW_DOCUMENTS') ||
+      ['CEO', 'CO_FOUNDER', 'ADMIN', 'HR', 'RECEPTION'].includes(role);
+
+    if (!hasGovIdPermission || role === 'PANTRY') {
+      console.warn(`[AUTH] candidate document access denied for ${auth.user.name} (${role})`);
       return res.status(403).json({ success: false, error: 'Access Denied: You do not have permission to access Government ID documents.' });
     }
 
-    const db = dbService.get();
+    const userName = auth.user.name;
     const candidate = db.candidates.find((c) => c.id === candidateId);
 
     if (!candidate || (candidate as any).isDeleted) {
@@ -1443,6 +1579,8 @@ async function startServer() {
     } catch (auditErr) {
       console.warn('Failed to record document access audit', auditErr);
     }
+
+    console.log(`[AUTH] candidate document access granted: ${userName} (${role}) -> Gov ID of ${candidate.fullName}`);
 
     // Chrome-blocking proof headers: Allow secure in-app rendering
     res.setHeader('Content-Type', mimeType);
@@ -1507,14 +1645,31 @@ async function startServer() {
   // ==========================================
   const handleResumeRequest = (req: Request, res: Response, isDownload = false) => {
     const { candidateId } = req.params;
-    const role = (req.headers['x-user-role'] || req.query.role) as UserRole;
-    const userName = (req.headers['x-user-name'] as string) || (req.query.userName as string) || (role === 'HR' ? 'Sneha Patel (HR)' : `${role} User`);
+    const db = dbService.get();
+    const auth = authenticateStaffRequest(req, db.users);
 
-    if (!role || !['HR', 'ADMIN', 'CEO', 'INTERVIEWER', 'RECEPTION'].includes(role) || role === 'PANTRY') {
+    if (!auth.authenticated || !auth.user) {
+      console.warn(`[AUTH] candidate resume access denied: unauthenticated attempt for ${candidateId}`);
+      return res.status(401).json({ success: false, error: 'Unauthorized: Staff authentication required to access candidate resumes.' });
+    }
+
+    const role = auth.user.role;
+    const permissions = auth.effectivePermissions || [];
+    const hasResumePermission =
+      permissions.includes('ALL_PERMISSIONS') ||
+      permissions.includes('FULL_ACCESS') ||
+      permissions.includes('candidate.resume.view') ||
+      permissions.includes('candidate.documents.view') ||
+      permissions.includes('VIEW_RESUME') ||
+      permissions.includes('VIEW_DOCUMENTS') ||
+      ['CEO', 'CO_FOUNDER', 'ADMIN', 'HR', 'INTERVIEWER', 'RECEPTION'].includes(role);
+
+    if (!hasResumePermission || role === 'PANTRY') {
+      console.warn(`[AUTH] candidate resume access denied for ${auth.user.name} (${role})`);
       return res.status(403).json({ success: false, error: 'Access Denied: You do not have permission to access candidate resumes.' });
     }
 
-    const db = dbService.get();
+    const userName = auth.user.name;
     const candidate = db.candidates.find((c) => c.id === candidateId);
 
     if (!candidate || (candidate as any).isDeleted) {
@@ -1565,6 +1720,8 @@ async function startServer() {
     } catch (auditErr) {
       console.warn('Failed to record resume access audit', auditErr);
     }
+
+    console.log(`[AUTH] candidate resume access granted: ${userName} (${role}) -> Resume of ${candidate.fullName}`);
 
     // Chrome-blocking proof headers: Allow secure in-app rendering
     res.setHeader('Content-Type', mimeType);
@@ -1647,13 +1804,22 @@ async function startServer() {
       });
     });
 
+    const session = createStaffSession(user, req.ip);
+    res.setHeader('Set-Cookie', `wcr_session=${session.token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800`);
+    console.log(`[AUTH] staff authenticated: ${user.name} (${user.role})`);
+
     const { passwordHash: _hash, ...safeUser } = user;
     res.json({
       success: true,
       user: safeUser,
       role: user.role,
-      permissions: user.permissions || ROLE_PERMISSIONS[user.role] || [],
-      token: `wcr-auth-${user.id}-${Date.now()}`,
+      permissions: session.permissions,
+      session: {
+        sessionId: session.sessionId,
+        token: session.token,
+        expiresAt: session.expiresAt,
+      },
+      token: session.token,
     });
   });
 
@@ -2499,73 +2665,90 @@ async function startServer() {
   // DATA QUERIES WITH ROLE VISIBILITY FILTERING
   // ==========================================
   const handleGetCandidates = (req: Request, res: Response) => {
-    const role = (req.headers['x-user-role'] || req.query.role) as UserRole;
-    if (!role || !['HR', 'ADMIN', 'CEO', 'INTERVIEWER', 'RECEPTION', 'PANTRY'].includes(role)) {
+    const db = dbService.get();
+    const auth = authenticateStaffRequest(req, db.users);
+
+    if (!auth.authenticated || !auth.user) {
+      console.warn(`[AUTH] candidate list access denied: unauthenticated request from ${req.ip}`);
       return res.status(401).json({ success: false, error: 'Unauthorized: Staff authentication required to access candidate database.' });
     }
-    const db = dbService.get();
+
+    const role = auth.user.role;
     const visibility = db.settings.fieldVisibility[role] || db.settings.fieldVisibility.HR;
 
     // Apply field-level visibility filtering based on role and exclude soft-deleted candidates
     const filteredCandidates = db.candidates
       .filter((c) => !(c as any).isDeleted)
       .map((cand) => {
-      const copy: any = {
-        id: cand.id,
-        status: cand.status,
-        currentLocation: cand.currentLocation,
-        arrivalTime: cand.arrivalTime,
-        checkOutTime: cand.checkOutTime,
-        totalDurationMinutes: cand.totalDurationMinutes,
-        currentInterviewId: cand.currentInterviewId,
-        position: cand.position,
-        department: cand.department,
-        totalExperience: cand.totalExperience,
-        relevantExperience: cand.relevantExperience,
-      };
-
-      if (visibility.candidateName) copy.fullName = cand.fullName;
-      if (visibility.phone) copy.phone = cand.phone;
-      if (visibility.email) copy.email = cand.email;
-      if (visibility.address) {
-        copy.address = cand.address;
-        copy.city = cand.city;
-        copy.state = cand.state;
-        copy.pincode = cand.pincode;
-      }
-      if (visibility.livePhoto) {
-        copy.livePhoto = cand.livePhoto;
-        copy.livePhotoCapturedAt = cand.livePhotoCapturedAt;
-        copy.livePhotoCapturedBy = cand.livePhotoCapturedBy;
-        copy.arrivalPhoto = cand.arrivalPhoto;
-        copy.arrivalPhotoCapturedAt = cand.arrivalPhotoCapturedAt;
-        copy.arrivalPhotoCapturedBy = cand.arrivalPhotoCapturedBy;
-        copy.arrivalPhotoCapturedByName = cand.arrivalPhotoCapturedByName;
-        if (cand.photoMetadata) {
-          const meta = { ...cand.photoMetadata };
-          delete (meta as any).photoUrl;
-          copy.photoMetadata = meta;
+        // For Pantry: only minimal operational fields
+        if (role === 'PANTRY') {
+          return {
+            id: cand.id,
+            fullName: cand.fullName,
+            status: cand.status,
+            currentLocation: cand.currentLocation,
+            arrivalTime: cand.arrivalTime,
+          };
         }
-      }
-      if (visibility.resume) {
-        copy.resumeUrl = cand.resumeUrl?.startsWith('data:')
-          ? `/api/candidates/${cand.id}/resume?role=${encodeURIComponent(role)}`
-          : cand.resumeUrl;
-        copy.resumeFileName = cand.resumeFileName;
-        copy.resumeFileSize = cand.resumeFileSize;
-        copy.resumeMimeType = cand.resumeMimeType;
-        copy.resumeUploadedAt = cand.resumeUploadedAt;
-        copy.resumeMetadata = cand.resumeMetadata;
-      }
-      if (visibility.salary) copy.expectedSalary = cand.expectedSalary;
-      copy.qualification = cand.qualification;
-      copy.currentCompany = cand.currentCompany;
-      copy.noticePeriod = cand.noticePeriod;
-      copy.referralSource = cand.referralSource;
-      copy.skills = cand.skills;
 
-      return copy;
-    });
+        const copy: any = {
+          id: cand.id,
+          status: cand.status,
+          currentLocation: cand.currentLocation,
+          arrivalTime: cand.arrivalTime,
+          checkOutTime: cand.checkOutTime,
+          totalDurationMinutes: cand.totalDurationMinutes,
+          currentInterviewId: cand.currentInterviewId,
+          position: cand.position,
+          department: cand.department,
+          totalExperience: cand.totalExperience,
+          relevantExperience: cand.relevantExperience,
+        };
+
+        if (visibility.candidateName) copy.fullName = cand.fullName;
+        if (visibility.phone) copy.phone = cand.phone;
+        if (visibility.email) copy.email = cand.email;
+        if (visibility.address) {
+          copy.address = cand.address;
+          copy.city = cand.city;
+          copy.state = cand.state;
+          copy.pincode = cand.pincode;
+        }
+        if (visibility.livePhoto) {
+          copy.livePhoto = cand.livePhoto;
+          copy.livePhotoCapturedAt = cand.livePhotoCapturedAt;
+          copy.livePhotoCapturedBy = cand.livePhotoCapturedBy;
+          copy.arrivalPhoto = cand.arrivalPhoto;
+          copy.arrivalPhotoCapturedAt = cand.arrivalPhotoCapturedAt;
+          copy.arrivalPhotoCapturedBy = cand.arrivalPhotoCapturedBy;
+          copy.arrivalPhotoCapturedByName = cand.arrivalPhotoCapturedByName;
+          if (cand.photoMetadata) {
+            const meta = { ...cand.photoMetadata };
+            delete (meta as any).photoUrl;
+            copy.photoMetadata = meta;
+          }
+        }
+        if (visibility.resume) {
+          copy.resumeUrl = cand.resumeUrl?.startsWith('data:')
+            ? `/api/candidates/${cand.id}/resume?role=${encodeURIComponent(role)}`
+            : cand.resumeUrl;
+          copy.resumeFileName = cand.resumeFileName;
+          copy.resumeFileSize = cand.resumeFileSize;
+          copy.resumeMimeType = cand.resumeMimeType;
+          copy.resumeUploadedAt = cand.resumeUploadedAt;
+          copy.resumeMetadata = cand.resumeMetadata;
+        }
+        if (visibility.salary && (role === 'HR' || role === 'ADMIN' || role === 'CEO' || role === 'CO_FOUNDER')) {
+          copy.expectedSalary = cand.expectedSalary;
+        }
+        copy.qualification = cand.qualification;
+        copy.currentCompany = cand.currentCompany;
+        copy.noticePeriod = cand.noticePeriod;
+        copy.referralSource = cand.referralSource;
+        copy.skills = cand.skills;
+
+        return copy;
+      });
 
     res.json({ success: true, candidates: filteredCandidates });
   };
@@ -2575,12 +2758,16 @@ async function startServer() {
 
   app.get('/api/candidates/:id', (req: Request, res: Response) => {
     const { id } = req.params;
-    const role = (req.headers['x-user-role'] || req.query.role) as UserRole;
-    if (!role || !['HR', 'ADMIN', 'CEO', 'INTERVIEWER', 'RECEPTION', 'PANTRY'].includes(role)) {
+    const db = dbService.get();
+    const auth = authenticateStaffRequest(req, db.users);
+
+    if (!auth.authenticated || !auth.user) {
+      console.warn(`[AUTH] candidate profile access denied: unauthenticated request for ${id}`);
       return res.status(401).json({ success: false, error: 'Unauthorized: Staff authentication required to access candidate profile.' });
     }
+
+    const role = auth.user.role;
     const includeDeleted = req.query.includeDeleted === 'true' || role === 'ADMIN';
-    const db = dbService.get();
 
     const candidate = db.candidates.find((c) => c.id === id);
     if (!candidate) {
@@ -2606,20 +2793,20 @@ async function startServer() {
       delete (candidateData as any).state;
       delete (candidateData as any).pincode;
     }
-    if (!visibility.resume) {
+    if (!visibility.resume || role === 'PANTRY') {
       delete (candidateData as any).resumeUrl;
       delete (candidateData as any).resumeFileName;
       delete (candidateData as any).resumeFileSize;
     }
-    if (!visibility.governmentId) {
+    if (!visibility.governmentId || role === 'PANTRY' || role === 'INTERVIEWER') {
       delete (candidateData as any).governmentId;
     }
-    if (!visibility.salary || (role !== 'HR' && role !== 'ADMIN' && role !== 'CEO')) {
+    if (!visibility.salary || (role !== 'HR' && role !== 'ADMIN' && role !== 'CEO' && role !== 'CO_FOUNDER')) {
       delete (candidateData as any).expectedSalary;
     }
 
     // Strictly redact confidential HR notes from Reception, Interviewers, and Pantry
-    if (role !== 'HR' && role !== 'ADMIN' && role !== 'CEO') {
+    if (role !== 'HR' && role !== 'ADMIN' && role !== 'CEO' && role !== 'CO_FOUNDER') {
       delete (candidateData as any).hrPrivateNotes;
       delete (candidateData as any).interviewerFeedbackPrivate;
       delete (candidateData as any).internalHiringDecisionNotes;
@@ -2627,7 +2814,6 @@ async function startServer() {
     }
 
     // Mask Raw Government ID number across all endpoints except when raw export requested by Admin
-    // Also remove heavy base64 documentDataUrl from the JSON candidate payload (documents are streamed via dedicated endpoints)
     if (candidateData.governmentId) {
       const sanitizedGovId = { ...candidateData.governmentId };
       delete (sanitizedGovId as any).rawIdNumber;
@@ -2643,16 +2829,19 @@ async function startServer() {
       candidateData.photoMetadata = sanitizedMeta;
     }
 
-    // Clean up resumeUrl if it is an inline base64 string so JSON responses remain lightweight
+    // Clean up resumeUrl
     if (candidateData.resumeUrl && candidateData.resumeUrl.startsWith('data:')) {
       candidateData.resumeUrl = `/api/candidates/${candidate.id}/resume?role=${encodeURIComponent(role)}`;
     }
+
+    console.log(`[AUTH] candidate profile access granted: ${auth.user.name} (${role}) -> ${candidate.fullName} (${candidate.id})`);
 
     res.json({
       success: true,
       candidate: candidateData,
       interviews,
       timeline,
+      permissions: auth.effectivePermissions || [],
     });
   });
 
