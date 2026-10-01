@@ -4,6 +4,8 @@ import type {
   Interview,
   Notification,
   PantryTask,
+  PantryTaskType,
+  NotificationPriority,
   TimelineEvent,
   AuditLog,
   UserRole,
@@ -536,6 +538,7 @@ class EventWorkflowEngine {
       room.updatedAt = timestamp;
 
       // 2. Update Candidate Location & Status
+      cand.assignedRoomId = room.id;
       cand.currentLocation = room.name;
       cand.status = 'ROOM_ASSIGNED';
 
@@ -553,6 +556,7 @@ class EventWorkflowEngine {
           id: pantryTaskId,
           roomId: room.id,
           roomName: room.name,
+          candidateId: cand.id,
           candidateName: cand.fullName,
           taskType: 'ROOM_PREP',
           description: `Prepare ${room.name}: Sanitization, setup, and 2 bottles of premium mineral water.`,
@@ -703,6 +707,97 @@ class EventWorkflowEngine {
         },
       });
     }
+  }
+
+  // 2.5 CREATE / ASSIGN PANTRY TASK
+  public handleCreatePantryTask(
+    actorId: string,
+    actorName: string,
+    actorRole: string,
+    roomId: string,
+    taskType: PantryTaskType,
+    description: string,
+    requiredItems: string[],
+    candidateName?: string,
+    priority: NotificationPriority = 'HIGH',
+    candidateId?: string
+  ) {
+    const timestamp = new Date().toISOString();
+    let createdTask: PantryTask | null = null;
+
+    dbService.update((draft) => {
+      const room = draft.rooms.find((r) => r.id === roomId || r.roomId === roomId);
+      if (!room) {
+        throw new Error('Selected room not found in Room Management');
+      }
+
+      const taskId = `pantry-task-${Date.now()}`;
+      const pantryTask: PantryTask = {
+        id: taskId,
+        roomId: room.id,
+        roomName: room.name,
+        candidateId: candidateId || room.currentCandidateId || '',
+        candidateName: candidateName || room.currentCandidateName || '',
+        taskType: taskType || 'ROOM_PREP',
+        description: description || `Hospitality task for ${room.name}`,
+        requiredItems: requiredItems && requiredItems.length > 0 ? requiredItems : ['2x Mineral Water Bottles', 'Room Sanitation'],
+        priority: priority || 'HIGH',
+        status: 'PENDING',
+        createdAt: timestamp,
+      };
+
+      draft.pantryTasks.unshift(pantryTask);
+      createdTask = pantryTask;
+
+      // Broadcast notification
+      draft.notifications.unshift({
+        id: `notif-${Date.now()}-pan-assigned`,
+        recipientRole: 'PANTRY',
+        title: `Task Assigned: ${room.name}`,
+        message: `${actorName} assigned: ${pantryTask.description}`,
+        priority: pantryTask.priority === 'CRITICAL' ? 'CRITICAL' : 'HIGH',
+        eventType: 'ROOM_PREPARATION_REQUIRED',
+        entityId: pantryTask.id,
+        entityType: 'PANTRY_TASK',
+        read: false,
+        createdAt: timestamp,
+        actionButtons: [
+          { label: 'Mark Complete', actionKey: 'COMPLETE_PANTRY_TASK', payload: { taskId: pantryTask.id } },
+        ],
+        payload: {
+          task: pantryTask.description,
+          room: room.name,
+          candidate: pantryTask.candidateName,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        },
+      });
+
+      draft.auditLogs.unshift({
+        id: `aud-${Date.now()}-pan-assign`,
+        timestamp,
+        actorType: 'USER',
+        actorName,
+        actorRole: (actorRole as any) || 'STAFF',
+        action: 'ASSIGN_PANTRY_TASK',
+        details: `Assigned hospitality task (${taskType}) for ${room.name} (${room.id}).`,
+        entityId: taskId,
+        entityType: 'PANTRY_TASK',
+      });
+    });
+
+    this.publishDomainEvent({
+      eventType: 'PANTRY_TASK_CREATED',
+      actorType: 'STAFF',
+      source: 'STAFF_ACTION',
+      metadata: {
+        taskId: createdTask ? (createdTask as PantryTask).id : '',
+        roomId: createdTask ? (createdTask as PantryTask).roomId : '',
+        roomName: createdTask ? (createdTask as PantryTask).roomName : '',
+        taskType: createdTask ? (createdTask as PantryTask).taskType : '',
+      },
+    });
+
+    return createdTask;
   }
 
   // 3. PANTRY COMPLETES PREPARATION
@@ -1024,8 +1119,20 @@ class EventWorkflowEngine {
 
       candName = cand.fullName;
       cand.status = 'CHECKED_OUT';
+      cand.assignedRoomId = undefined;
       cand.currentLocation = 'Departed / Checked Out';
       cand.checkOutTime = timestamp;
+
+      // Free room if still assigned to this candidate
+      const occupiedRoom = draft.rooms.find((r) => r.currentCandidateId === candidateId);
+      if (occupiedRoom) {
+        occupiedRoom.status = 'AVAILABLE';
+        occupiedRoom.currentCandidateId = undefined;
+        occupiedRoom.currentCandidateName = undefined;
+        occupiedRoom.currentInterviewId = undefined;
+        occupiedRoom.assignedInterviewerName = undefined;
+        occupiedRoom.updatedAt = timestamp;
+      }
 
       if (cand.arrivalTime) {
         const arrTime = new Date(cand.arrivalTime).getTime();

@@ -2529,8 +2529,50 @@ async function startServer() {
   });
 
   // ==========================================
-  // PANTRY TASK COMPLETION
+  // PANTRY TASK ASSIGNMENT & COMPLETION
   // ==========================================
+  app.post('/api/pantry/tasks', (req: Request, res: Response) => {
+    const {
+      roomId,
+      taskType,
+      description,
+      requiredItems,
+      candidateId,
+      candidateName,
+      priority,
+      actorId,
+      actorName,
+      actorRole,
+    } = req.body;
+
+    if (!roomId) {
+      return res.status(400).json({ success: false, error: 'Room selection (roomId) is required' });
+    }
+
+    try {
+      const task = eventWorkflowEngine.handleCreatePantryTask(
+        actorId || 'usr-pantry-suresh',
+        actorName || 'Pantry Steward',
+        actorRole || 'PANTRY',
+        roomId,
+        taskType || 'ROOM_PREP',
+        description || '',
+        requiredItems || [],
+        candidateName,
+        priority || 'HIGH',
+        candidateId
+      );
+
+      res.json({
+        success: true,
+        message: 'Pantry task created and assigned successfully.',
+        task,
+      });
+    } catch (err: any) {
+      res.status(400).json({ success: false, error: err.message || 'Failed to create pantry task' });
+    }
+  });
+
   app.post('/api/pantry/tasks/:id/complete', (req: Request, res: Response) => {
     const { id } = req.params;
     const { stewardName } = req.body;
@@ -3028,7 +3070,7 @@ async function startServer() {
     }
   });
 
-  // ==========================================
+  // ==========================================\\
   // ROOMS & PODS MANAGEMENT (ADMIN CONFIGURE)
   // ==========================================
   app.get('/api/rooms', (req: Request, res: Response) => {
@@ -3037,7 +3079,7 @@ async function startServer() {
   });
 
   app.post('/api/rooms', (req: Request, res: Response) => {
-    const { name, type, capacity, floor, preferredFor } = req.body;
+    const { name, type, preferredFor } = req.body;
     const actorRole = (req.headers['x-user-role'] || req.query.role || 'ADMIN') as UserRole;
     const actorName = (req.headers['x-user-name'] || req.query.userName || 'Sameer Sir (Admin)') as string;
     const actorUserId = (req.headers['x-user-id'] || req.query.userId || 'usr-admin-sameer') as string;
@@ -3054,8 +3096,6 @@ async function startServer() {
       roomName: name.trim(),
       type: (type as RoomType) || 'MEETING_ROOM',
       roomType: (type as RoomType) || 'MEETING_ROOM',
-      capacity: Number(capacity) || 6,
-      floor: floor || 'Floor 3',
       status: 'AVAILABLE',
       isActive: true,
       preferredFor: preferredFor || 'Interviews & Business Meetings',
@@ -3072,7 +3112,7 @@ async function startServer() {
         actorName,
         actorRole,
         action: 'ROOM_CREATED',
-        details: `Created new room/pod: "${newRoom.name}" (${newRoom.type}, Capacity: ${newRoom.capacity}).`,
+        details: `Created new room/pod: "${newRoom.name}" (${newRoom.type}).`,
         entityId: newRoom.id,
         entityType: 'ROOM',
       });
@@ -3084,7 +3124,7 @@ async function startServer() {
 
   app.put('/api/rooms/:id', (req: Request, res: Response) => {
     const { id } = req.params;
-    const { name, type, capacity, floor, preferredFor, status, isActive } = req.body;
+    const { name, type, preferredFor, status, isActive } = req.body;
     const actorRole = (req.headers['x-user-role'] || req.query.role || 'ADMIN') as UserRole;
     const actorName = (req.headers['x-user-name'] || req.query.userName || 'Sameer Sir (Admin)') as string;
     const actorUserId = (req.headers['x-user-id'] || req.query.userId || 'usr-admin-sameer') as string;
@@ -3093,19 +3133,49 @@ async function startServer() {
     let updatedRoom: Room | null = null;
 
     dbService.update((draft) => {
-      const room = draft.rooms.find((r) => r.id === id);
+      const room = draft.rooms.find((r) => r.id === id || r.roomId === id);
       if (!room) return;
 
-      if (name !== undefined) {
-        room.name = name.trim();
-        room.roomName = name.trim();
+      const oldName = room.name;
+
+      if (name !== undefined && name.trim()) {
+        const newName = name.trim();
+        room.name = newName;
+        room.roomName = newName;
+
+        // Cascade rename across all related entities using single source of truth
+        if (room.currentCandidateId) {
+          const cand = draft.candidates.find((c) => c.id === room.currentCandidateId);
+          if (cand) {
+            cand.currentLocation = newName;
+            cand.assignedRoomId = room.id;
+          }
+        }
+
+        draft.candidates.forEach((cand) => {
+          if (cand.assignedRoomId === room.id || cand.currentLocation === oldName) {
+            cand.currentLocation = newName;
+            cand.assignedRoomId = room.id;
+          }
+        });
+
+        draft.interviews.forEach((i) => {
+          if (i.roomId === room.id || i.roomName === oldName) {
+            i.roomName = newName;
+          }
+        });
+
+        draft.pantryTasks.forEach((pt) => {
+          if (pt.roomId === room.id || pt.roomName === oldName) {
+            pt.roomName = newName;
+          }
+        });
       }
+
       if (type !== undefined) {
         room.type = type as RoomType;
         room.roomType = type as RoomType;
       }
-      if (capacity !== undefined) room.capacity = Number(capacity);
-      if (floor !== undefined) room.floor = floor;
       if (preferredFor !== undefined) room.preferredFor = preferredFor;
       if (status !== undefined) room.status = status;
       if (isActive !== undefined) room.isActive = Boolean(isActive);
@@ -3119,7 +3189,7 @@ async function startServer() {
         actorName,
         actorRole,
         action: 'ROOM_UPDATED',
-        details: `Configured room "${room.name}": Type=${room.type}, Capacity=${room.capacity}, Active=${room.isActive}.`,
+        details: `Configured room "${room.name}": Type=${room.type}, Active=${room.isActive}.`,
         entityId: room.id,
         entityType: 'ROOM',
       });
@@ -3131,6 +3201,54 @@ async function startServer() {
 
     eventWorkflowEngine.broadcast({ type: 'ROOMS_UPDATED', payload: { room: updatedRoom } });
     res.json({ success: true, room: updatedRoom, message: 'Room configuration updated.' });
+  });
+
+  app.delete('/api/rooms/:id', (req: Request, res: Response) => {
+    const { id } = req.params;
+    const actorRole = (req.headers['x-user-role'] || req.query.role || 'ADMIN') as UserRole;
+    const actorName = (req.headers['x-user-name'] || req.query.userName || 'Sameer Sir (Admin)') as string;
+    const actorUserId = (req.headers['x-user-id'] || req.query.userId || 'usr-admin-sameer') as string;
+
+    if (actorRole !== 'ADMIN' && actorRole !== 'CEO' && actorRole !== 'CO_FOUNDER') {
+      return res.status(403).json({ success: false, error: 'Unauthorized: Admin or Executive credentials required.' });
+    }
+
+    const timestamp = new Date().toISOString();
+    let deletedRoomName = '';
+
+    try {
+      dbService.update((draft) => {
+        const idx = draft.rooms.findIndex((r) => r.id === id || r.roomId === id);
+        if (idx === -1) {
+          throw new Error('Room not found.');
+        }
+
+        const room = draft.rooms[idx];
+        if (room.status === 'OCCUPIED' || room.status === 'ASSIGNED') {
+          throw new Error(`Cannot delete room "${room.name}" while occupied or assigned to an active interview.`);
+        }
+
+        deletedRoomName = room.name;
+        draft.rooms.splice(idx, 1);
+
+        draft.auditLogs.unshift({
+          id: `aud-${Date.now()}-room-del`,
+          timestamp,
+          actorUserId,
+          actorName,
+          actorRole,
+          action: 'ROOM_DELETED',
+          details: `Deleted room "${deletedRoomName}".`,
+          entityId: id,
+          entityType: 'ROOM',
+        });
+      });
+
+      eventWorkflowEngine.broadcast({ type: 'ROOMS_UPDATED', payload: { deletedRoomId: id } });
+      res.json({ success: true, message: `Room "${deletedRoomName}" deleted successfully.` });
+    } catch (err: any) {
+      res.status(400).json({ success: false, error: err.message || 'Failed to delete room.' });
+    }
   });
 
   app.patch('/api/rooms/:id/toggle-active', (req: Request, res: Response) => {

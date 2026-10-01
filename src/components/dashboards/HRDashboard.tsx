@@ -231,7 +231,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({
               <DoorOpen className="w-4 h-4 text-amber-400" />
               Office Rooms & Pods
             </h2>
-            <p className="text-xs text-slate-400 mt-0.5">Real-time status across Floors 3 & 4.</p>
+            <p className="text-xs text-slate-400 mt-0.5">Real-time office room status.</p>
           </div>
 
           <div className="space-y-2.5">
@@ -261,7 +261,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({
                   </div>
 
                   <div className="flex items-center justify-between text-[11px] text-slate-400">
-                    <span>{room.floor} • Cap: {room.capacity}</span>
+                    <span className="capitalize">{room.type?.replace('_', ' ').toLowerCase() || 'Meeting Room'}</span>
                     {room.currentCandidateName && (
                       <span className="text-amber-400 font-semibold">
                         Occupant: {room.currentCandidateName}

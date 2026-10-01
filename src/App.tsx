@@ -882,6 +882,7 @@ export default function App() {
           <PantryDashboard
             tasks={pantryTasks}
             rooms={rooms}
+            candidates={candidates}
             onCompleteTask={handleCompletePantryTask}
             onRefresh={fetchAllData}
           />

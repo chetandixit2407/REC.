@@ -25,8 +25,19 @@ import {
   ShieldCheck,
   ShieldAlert,
   AlertCircle,
+  DoorOpen,
+  Edit3,
+  Trash2,
 } from 'lucide-react';
-import type { AuditLog, RoleFieldVisibility, UserRole, PasswordResetRequest } from '../../types/index.ts';
+import type {
+  AuditLog,
+  RoleFieldVisibility,
+  UserRole,
+  PasswordResetRequest,
+  Room,
+  RoomType,
+  RoomStatus,
+} from '../../types/index.ts';
 import { AdminChangeCredentialsModal } from '../AdminChangeCredentialsModal.tsx';
 
 interface AdminDashboardProps {
@@ -34,7 +45,7 @@ interface AdminDashboardProps {
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onRefresh }) => {
-  const [activeTab, setActiveTab] = useState<'users' | 'resets' | 'visibility' | 'audit' | 'settings'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'rooms' | 'resets' | 'visibility' | 'audit' | 'settings'>('users');
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [visibilitySettings, setVisibilitySettings] = useState<Record<UserRole, RoleFieldVisibility> | null>(null);
@@ -49,6 +60,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onRefresh }) => 
   const [staffUsers, setStaffUsers] = useState<any[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [selectedUserForCredentials, setSelectedUserForCredentials] = useState<any | null>(null);
+
+  // Rooms State (Single source of truth)
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [loadingRooms, setLoadingRooms] = useState(false);
+  const [showNewRoomModal, setShowNewRoomModal] = useState(false);
+  const [selectedRoomForEdit, setSelectedRoomForEdit] = useState<Room | null>(null);
+  const [newRoomForm, setNewRoomForm] = useState({
+    name: '',
+    type: 'MEETING_ROOM' as RoomType,
+    preferredFor: '',
+  });
+  const [editRoomForm, setEditRoomForm] = useState({
+    name: '',
+    type: 'MEETING_ROOM' as RoomType,
+    preferredFor: '',
+    status: 'AVAILABLE' as RoomStatus,
+    isActive: true,
+  });
+  const [savingRoom, setSavingRoom] = useState(false);
+  const [roomError, setRoomError] = useState<string | null>(null);
 
   // Password Reset Queue State
   const [resetRequests, setResetRequests] = useState<PasswordResetRequest[]>([]);
@@ -72,6 +103,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onRefresh }) => 
 
   useEffect(() => {
     fetchUsers();
+    fetchRooms();
     fetchResets();
     fetchLogs();
     fetchSettings();
@@ -89,6 +121,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onRefresh }) => 
       console.error('Failed to load staff users', err);
     } finally {
       setLoadingUsers(false);
+    }
+  };
+
+  const fetchRooms = async () => {
+    setLoadingRooms(true);
+    try {
+      const res = await fetch('/api/rooms');
+      const data = await res.json();
+      if (data.success) {
+        setRooms(data.rooms);
+      }
+    } catch (err) {
+      console.error('Failed to load rooms', err);
+    } finally {
+      setLoadingRooms(false);
     }
   };
 
@@ -143,6 +190,116 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onRefresh }) => 
       }
     } catch (err) {
       console.error('Failed to load bootstrap settings', err);
+    }
+  };
+
+  const handleCreateRoomSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newRoomForm.name.trim()) return;
+    setSavingRoom(true);
+    setRoomError(null);
+
+    try {
+      const res = await fetch('/api/rooms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newRoomForm.name.trim(),
+          type: newRoomForm.type,
+          preferredFor: newRoomForm.preferredFor.trim() || 'Interviews & Business Meetings',
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setShowNewRoomModal(false);
+        setNewRoomForm({
+          name: '',
+          type: 'MEETING_ROOM',
+          preferredFor: '',
+        });
+        fetchRooms();
+        fetchLogs();
+        if (onRefresh) onRefresh();
+      } else {
+        setRoomError(data.error || 'Failed to create room.');
+      }
+    } catch (err: any) {
+      setRoomError(err.message || 'Network error.');
+    } finally {
+      setSavingRoom(false);
+    }
+  };
+
+  const handleEditRoomSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedRoomForEdit || !editRoomForm.name.trim()) return;
+    setSavingRoom(true);
+    setRoomError(null);
+
+    try {
+      const res = await fetch(`/api/rooms/${selectedRoomForEdit.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editRoomForm.name.trim(),
+          type: editRoomForm.type,
+          preferredFor: editRoomForm.preferredFor.trim(),
+          status: editRoomForm.status,
+          isActive: editRoomForm.isActive,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSelectedRoomForEdit(null);
+        fetchRooms();
+        fetchLogs();
+        if (onRefresh) onRefresh();
+      } else {
+        setRoomError(data.error || 'Failed to update room.');
+      }
+    } catch (err: any) {
+      setRoomError(err.message || 'Network error.');
+    } finally {
+      setSavingRoom(false);
+    }
+  };
+
+  const handleToggleRoomActive = async (roomId: string) => {
+    try {
+      const res = await fetch(`/api/rooms/${roomId}/toggle-active`, {
+        method: 'PATCH',
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchRooms();
+        fetchLogs();
+        if (onRefresh) onRefresh();
+      }
+    } catch (err) {
+      console.error('Failed to toggle room active state', err);
+    }
+  };
+
+  const handleDeleteRoom = async (roomId: string, roomName: string) => {
+    if (!window.confirm(`Are you sure you want to delete room "${roomName}"? This cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/rooms/${roomId}`, {
+        method: 'DELETE',
+        headers: { 'x-user-role': 'ADMIN' },
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchRooms();
+        fetchLogs();
+        if (onRefresh) onRefresh();
+      } else {
+        window.alert(data.error || 'Failed to delete room');
+      }
+    } catch (err) {
+      console.error('Failed to delete room', err);
     }
   };
 
@@ -326,7 +483,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onRefresh }) => 
             </h1>
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
-            Full Access Credentials Manager (Sameer Sir), Password Reset Approvals, RBAC Visibility, and Central Audit Trail.
+            Full Access Credentials Manager (Sameer Sir), Room Configuration, Password Reset Approvals, and Central Audit Trail.
           </p>
         </div>
 
@@ -342,6 +499,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onRefresh }) => 
           >
             <Users className="w-3.5 h-3.5" />
             <span>Staff Accounts ({staffUsers.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('rooms')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'rooms'
+                ? 'bg-amber-500 text-slate-950 font-bold shadow-sm'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <DoorOpen className="w-3.5 h-3.5" />
+            <span>Meeting Rooms ({rooms.length})</span>
           </button>
 
           <button
@@ -502,7 +671,157 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onRefresh }) => 
         </div>
       )}
 
-      {/* TAB 2: PASSWORD RESET QUEUE & APPROVALS */}
+      {/* TAB 2: ROOM MANAGEMENT (CLEAN SINGLE DATA SOURCE - NO FLOOR, NO CAPACITY) */}
+      {activeTab === 'rooms' && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <DoorOpen className="w-4 h-4 text-amber-400" />
+                Office Meeting Rooms & Interview Pods Management
+              </h3>
+              <p className="text-xs text-slate-400">
+                Single centralized room registry used across Room Allocation, Interview Scheduling, Reception, and Pantry hospitality.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={fetchRooms}
+                className="p-2 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded-xl border border-slate-800 transition cursor-pointer"
+                title="Refresh rooms"
+              >
+                <RefreshCw className={`w-4 h-4 ${loadingRooms ? 'animate-spin' : ''}`} />
+              </button>
+              <button
+                onClick={() => {
+                  setNewRoomForm({ name: '', type: 'MEETING_ROOM', preferredFor: '' });
+                  setRoomError(null);
+                  setShowNewRoomModal(true);
+                }}
+                className="px-3.5 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs rounded-xl shadow-md transition cursor-pointer flex items-center gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Room</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto bg-slate-900 border border-slate-800 rounded-3xl shadow-xl">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-950/80 border-b border-slate-800 text-slate-300">
+                <tr>
+                  <th className="p-4 font-bold">Room Name</th>
+                  <th className="p-4 font-bold">Room Type</th>
+                  <th className="p-4 font-bold">Preferred Purpose</th>
+                  <th className="p-4 font-bold text-center">Live Status</th>
+                  <th className="p-4 font-bold text-center">Active</th>
+                  <th className="p-4 font-bold text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60">
+                {rooms.map((room) => {
+                  const isAvail = room.status === 'AVAILABLE';
+                  const isAssigned = room.status === 'ASSIGNED';
+                  const isOccupied = room.status === 'OCCUPIED';
+
+                  return (
+                    <tr key={room.id} className="hover:bg-slate-800/30 transition">
+                      <td className="p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                            <DoorOpen className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-white text-xs">{room.name}</h4>
+                            {room.currentCandidateName ? (
+                              <span className="text-[11px] text-amber-400 font-semibold">
+                                Occupant: {room.currentCandidateName}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-slate-500 font-mono">ID: {room.id}</span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="p-4">
+                        <span className="px-2 py-0.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-300 font-medium text-[11px]">
+                          {room.type?.replace('_', ' ')}
+                        </span>
+                      </td>
+
+                      <td className="p-4 text-slate-300">
+                        <span className="text-[11px]">{room.preferredFor || 'Interviews & Meetings'}</span>
+                      </td>
+
+                      <td className="p-4 text-center">
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                            isAvail
+                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                              : isAssigned
+                              ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                              : isOccupied
+                              ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30'
+                              : 'bg-rose-500/10 text-rose-400 border border-rose-500/30'
+                          }`}
+                        >
+                          {room.status}
+                        </span>
+                      </td>
+
+                      <td className="p-4 text-center">
+                        <button
+                          onClick={() => handleToggleRoomActive(room.id)}
+                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border cursor-pointer transition ${
+                            room.isActive
+                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-rose-500/20'
+                              : 'bg-rose-500/10 text-rose-400 border-rose-500/30 hover:bg-emerald-500/20'
+                          }`}
+                        >
+                          {room.isActive ? 'Active' : 'Disabled'}
+                        </button>
+                      </td>
+
+                      <td className="p-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => {
+                              setSelectedRoomForEdit(room);
+                              setEditRoomForm({
+                                name: room.name,
+                                type: room.type || 'MEETING_ROOM',
+                                preferredFor: room.preferredFor || '',
+                                status: room.status || 'AVAILABLE',
+                                isActive: room.isActive !== false,
+                              });
+                              setRoomError(null);
+                            }}
+                            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition cursor-pointer"
+                            title="Edit Room Configuration"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            onClick={() => handleDeleteRoom(room.id, room.name)}
+                            className="p-1.5 bg-slate-800 hover:bg-rose-900/50 text-slate-400 hover:text-rose-300 rounded-lg transition cursor-pointer"
+                            title="Delete Room"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: PASSWORD RESET QUEUE & APPROVALS */}
       {activeTab === 'resets' && (
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -549,7 +868,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onRefresh }) => 
                     const isPending = req.status === 'PENDING_APPROVAL';
                     const isApproved = req.status === 'APPROVED';
                     const isUsed = req.status === 'USED';
-                    const isExpired = req.status === 'EXPIRED';
 
                     return (
                       <tr key={req.id} className="hover:bg-slate-800/30 transition">
@@ -574,7 +892,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onRefresh }) => 
                               onClick={() => copyResetUrl(req.resetLink, req.id)}
                               className="text-[11px] text-amber-400 hover:text-amber-300 flex items-center gap-1 cursor-pointer"
                             >
-                              <Copy className="w-3 h-3" />
+                              <Copy className="w-3.5 h-3.5" />
                               <span>{copiedTokenId === req.id ? 'Copied Full Link!' : 'Copy Direct URL'}</span>
                             </button>
                           </div>
@@ -649,7 +967,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onRefresh }) => 
         </div>
       )}
 
-      {/* TAB 3: FIELD VISIBILITY MATRIX */}
+      {/* TAB 4: FIELD VISIBILITY MATRIX */}
       {activeTab === 'visibility' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -712,7 +1030,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onRefresh }) => 
         </div>
       )}
 
-      {/* TAB 4: AUDIT LOG TRAIL */}
+      {/* TAB 5: AUDIT LOG TRAIL */}
       {activeTab === 'audit' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -762,7 +1080,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onRefresh }) => 
         </div>
       )}
 
-      {/* TAB 5: OFFICE & WORKFLOW SETTINGS */}
+      {/* TAB 6: OFFICE & WORKFLOW SETTINGS */}
       {activeTab === 'settings' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -868,6 +1186,221 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onRefresh }) => 
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ADD NEW ROOM (NO FLOOR, NO CAPACITY) */}
+      {showNewRoomModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-xs p-3 sm:p-5 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 sm:p-8 text-slate-100 shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
+            <button
+              onClick={() => setShowNewRoomModal(false)}
+              className="absolute top-5 right-5 p-2 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-slate-400 hover:text-white transition"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                <DoorOpen className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white">Configure New Room / Pod</h3>
+                <p className="text-xs text-slate-400">Office Room Registration (Single Source of Truth)</p>
+              </div>
+            </div>
+
+            {roomError && (
+              <div className="mb-4 p-3 bg-rose-500/10 border border-rose-500/30 rounded-2xl text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{roomError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleCreateRoomSubmit} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-300 mb-1">Room Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={newRoomForm.name}
+                  onChange={(e) => setNewRoomForm({ ...newRoomForm, name: e.target.value })}
+                  placeholder="e.g. The Boardroom or Cabin 5"
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-hidden focus:border-amber-400"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-300 mb-1">Room Type</label>
+                <select
+                  value={newRoomForm.type}
+                  onChange={(e) => setNewRoomForm({ ...newRoomForm, type: e.target.value as RoomType })}
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-hidden focus:border-amber-400"
+                >
+                  <option value="MEETING_ROOM">Meeting Room</option>
+                  <option value="CABIN">Executive Cabin</option>
+                  <option value="EXECUTIVE_BOARDROOM">Executive Boardroom</option>
+                  <option value="WAITING_AREA">Waiting Lounge</option>
+                  <option value="POD">Interview Pod</option>
+                  <option value="OTHER">Other Purpose</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-300 mb-1">Preferred Purpose / Allocation Note</label>
+                <input
+                  type="text"
+                  value={newRoomForm.preferredFor}
+                  onChange={(e) => setNewRoomForm({ ...newRoomForm, preferredFor: e.target.value })}
+                  placeholder="e.g. Sales Panel & Leadership Interviews"
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-hidden focus:border-amber-400"
+                />
+              </div>
+
+              <div className="flex items-center gap-3 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowNewRoomModal(false)}
+                  className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs rounded-xl border border-slate-700 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingRoom}
+                  className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs rounded-xl shadow-lg transition cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  {savingRoom ? (
+                    <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <span>Add Room</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDIT ROOM (NO FLOOR, NO CAPACITY) */}
+      {selectedRoomForEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-xs p-3 sm:p-5 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 sm:p-8 text-slate-100 shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
+            <button
+              onClick={() => setSelectedRoomForEdit(null)}
+              className="absolute top-5 right-5 p-2 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-slate-400 hover:text-white transition"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                <Edit3 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white">Edit Room Configuration</h3>
+                <p className="text-xs text-slate-400">Renaming will automatically cascade to all modules</p>
+              </div>
+            </div>
+
+            {roomError && (
+              <div className="mb-4 p-3 bg-rose-500/10 border border-rose-500/30 rounded-2xl text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{roomError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleEditRoomSubmit} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-300 mb-1">Room Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={editRoomForm.name}
+                  onChange={(e) => setEditRoomForm({ ...editRoomForm, name: e.target.value })}
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-hidden focus:border-amber-400"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-300 mb-1">Room Type</label>
+                  <select
+                    value={editRoomForm.type}
+                    onChange={(e) => setEditRoomForm({ ...editRoomForm, type: e.target.value as RoomType })}
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-hidden focus:border-amber-400"
+                  >
+                    <option value="MEETING_ROOM">Meeting Room</option>
+                    <option value="CABIN">Executive Cabin</option>
+                    <option value="EXECUTIVE_BOARDROOM">Executive Boardroom</option>
+                    <option value="WAITING_AREA">Waiting Lounge</option>
+                    <option value="POD">Interview Pod</option>
+                    <option value="OTHER">Other Purpose</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-300 mb-1">Status</label>
+                  <select
+                    value={editRoomForm.status}
+                    onChange={(e) => setEditRoomForm({ ...editRoomForm, status: e.target.value as RoomStatus })}
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-hidden focus:border-amber-400"
+                  >
+                    <option value="AVAILABLE">Available</option>
+                    <option value="ASSIGNED">Assigned</option>
+                    <option value="OCCUPIED">Occupied</option>
+                    <option value="MAINTENANCE">Maintenance</option>
+                    <option value="NEEDS_CLEANING">Needs Cleaning</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-300 mb-1">Preferred Purpose</label>
+                <input
+                  type="text"
+                  value={editRoomForm.preferredFor}
+                  onChange={(e) => setEditRoomForm({ ...editRoomForm, preferredFor: e.target.value })}
+                  placeholder="e.g. Sales Panel & Leadership Interviews"
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-hidden focus:border-amber-400"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="editRoomActive"
+                  checked={editRoomForm.isActive}
+                  onChange={(e) => setEditRoomForm({ ...editRoomForm, isActive: e.target.checked })}
+                  className="w-4 h-4 rounded-md accent-amber-500 cursor-pointer"
+                />
+                <label htmlFor="editRoomActive" className="text-slate-300 font-semibold cursor-pointer">
+                  Room Active and Available for Allocation
+                </label>
+              </div>
+
+              <div className="flex items-center gap-3 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setSelectedRoomForEdit(null)}
+                  className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs rounded-xl border border-slate-700 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingRoom}
+                  className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs rounded-xl shadow-lg transition cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  {savingRoom ? (
+                    <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <span>Save Changes</span>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

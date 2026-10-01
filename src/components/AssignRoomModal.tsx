@@ -158,14 +158,12 @@ export const AssignRoomModal: React.FC<AssignRoomModalProps> = ({
                         <div>
                           <div className="flex items-center gap-2">
                             <h4 className="text-xs font-bold text-white">{room.name}</h4>
-                            <span className="text-[10px] text-slate-400">({room.floor})</span>
                           </div>
                           <div className="flex items-center gap-3 text-[10px] text-slate-400 mt-0.5">
-                            <span className="flex items-center gap-1">
-                              <Users className="w-3 h-3 text-slate-500" />
-                              Capacity: {room.capacity}
-                            </span>
-                            <span>Type: {room.type.replace('_', ' ')}</span>
+                            <span>Type: {room.type?.replace('_', ' ') || 'Meeting Room'}</span>
+                            {room.preferredFor && (
+                              <span className="truncate max-w-[200px]">({room.preferredFor})</span>
+                            )}
                           </div>
                         </div>
                       </div>

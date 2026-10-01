@@ -82,7 +82,7 @@ export const CEODashboard: React.FC<CEODashboardProps> = ({
           <p className="text-2xl font-black text-purple-400 mt-1">
             {rooms.filter((r) => r.type === 'EXECUTIVE_BOARDROOM').length}
           </p>
-          <span className="text-[10px] text-slate-400">Floor 4 VIP suites</span>
+          <span className="text-[10px] text-slate-400">Executive meeting suites</span>
         </div>
       </div>
 

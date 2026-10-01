@@ -286,6 +286,7 @@ export interface Candidate {
   deletedByName?: string;
   deletionReason?: string;
   status: CandidateStatus;
+  assignedRoomId?: string;
   currentLocation: string;
   arrivalTime?: string;
   checkOutTime?: string;
@@ -329,8 +330,6 @@ export interface Room {
   roomName?: string;
   type: RoomType;
   roomType?: RoomType;
-  capacity: number;
-  floor: string;
   status: RoomStatus;
   isActive: boolean;
   preferredFor?: string;
@@ -393,6 +392,7 @@ export interface PantryTask {
   id: string;
   roomId: string;
   roomName: string;
+  candidateId?: string;
   candidateName: string;
   taskType: PantryTaskType;
   description: string;

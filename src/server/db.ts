@@ -270,8 +270,6 @@ const defaultRooms: Room[] = [
     roomName: 'Lalit Sir Cabin',
     type: 'CABIN',
     roomType: 'CABIN',
-    capacity: 4,
-    floor: 'Floor 4 (Executive Suite)',
     status: 'AVAILABLE',
     isActive: true,
     preferredFor: 'CEO & High-Level Strategic Decisions',
@@ -285,8 +283,6 @@ const defaultRooms: Room[] = [
     roomName: 'Kimmi Mam Cabin',
     type: 'CABIN',
     roomType: 'CABIN',
-    capacity: 4,
-    floor: 'Floor 4 (Executive Suite)',
     status: 'AVAILABLE',
     isActive: true,
     preferredFor: 'Co-Founder & Strategic Advisory',
@@ -300,8 +296,6 @@ const defaultRooms: Room[] = [
     roomName: 'The Prestige Loft (Waiting Area)',
     type: 'WAITING_AREA',
     roomType: 'WAITING_AREA',
-    capacity: 20,
-    floor: 'Floor 3 (Main Lobby)',
     status: 'AVAILABLE',
     isActive: true,
     preferredFor: 'Candidate & VIP Guest Reception Lounge',
@@ -315,8 +309,6 @@ const defaultRooms: Room[] = [
     roomName: 'The Skyline',
     type: 'MEETING_ROOM',
     roomType: 'MEETING_ROOM',
-    capacity: 8,
-    floor: 'Floor 3',
     status: 'AVAILABLE',
     isActive: true,
     preferredFor: 'Senior Leadership & Sales Panel Evaluations',
@@ -330,8 +322,6 @@ const defaultRooms: Room[] = [
     roomName: 'The Community',
     type: 'MEETING_ROOM',
     roomType: 'MEETING_ROOM',
-    capacity: 10,
-    floor: 'Floor 3',
     status: 'AVAILABLE',
     isActive: true,
     preferredFor: 'Group Interviews & Departmental Rounds',
@@ -345,8 +335,6 @@ const defaultRooms: Room[] = [
     roomName: 'The Summit',
     type: 'MEETING_ROOM',
     roomType: 'MEETING_ROOM',
-    capacity: 12,
-    floor: 'Floor 4',
     status: 'AVAILABLE',
     isActive: true,
     preferredFor: 'Executive Board & Final Hiring Rounds',
@@ -360,8 +348,6 @@ const defaultRooms: Room[] = [
     roomName: 'WCR AIR',
     type: 'MEETING_ROOM',
     roomType: 'MEETING_ROOM',
-    capacity: 6,
-    floor: 'Floor 3',
     status: 'AVAILABLE',
     isActive: true,
     preferredFor: 'Fast-Track Screenings & Technical Assessments',
@@ -375,8 +361,6 @@ const defaultRooms: Room[] = [
     roomName: 'Prime Loft',
     type: 'MEETING_ROOM',
     roomType: 'MEETING_ROOM',
-    capacity: 6,
-    floor: 'Floor 3',
     status: 'AVAILABLE',
     isActive: true,
     preferredFor: 'HR Fitment & Initial Intake Interviews',
@@ -390,8 +374,6 @@ const defaultRooms: Room[] = [
     roomName: 'Regency',
     type: 'MEETING_ROOM',
     roomType: 'MEETING_ROOM',
-    capacity: 8,
-    floor: 'Floor 3',
     status: 'AVAILABLE',
     isActive: true,
     preferredFor: 'Confidential Client & Candidate Discussions',
@@ -542,36 +524,117 @@ class DatabaseService {
         const raw = fs.readFileSync(DB_FILE, 'utf-8');
         const parsed = JSON.parse(raw);
 
-        // 1. Replace existing room names with the 9 exact required rooms
-        const existingRoomNames = new Set((parsed.rooms || []).map((r: any) => r.name));
-        const requiredNames = [
-          'Lalit Sir Cabin',
-          'Kimmi Mam Cabin',
-          'The Prestige Loft (Waiting Area)',
-          'The Skyline',
-          'The Community',
-          'The Summit',
-          'WCR AIR',
-          'Prime Loft',
-          'Regency',
-        ];
-        const hasAllRooms = requiredNames.every((n) => existingRoomNames.has(n));
+        // 1. Preserve rooms from Room Management (or initialize if empty)
+        if (!parsed.rooms || !Array.isArray(parsed.rooms) || parsed.rooms.length === 0) {
+          parsed.rooms = defaultRooms;
+        } else {
+          // Strip any obsolete floor/capacity attributes from existing rooms
+          parsed.rooms = parsed.rooms.map((r: any) => {
+            const { floor: _f, capacity: _c, seatingCapacity: _sc, ...cleanRoom } = r;
+            return cleanRoom;
+          });
+        }
 
-        if (!hasAllRooms || !parsed.rooms || parsed.rooms.length < 9) {
-          const currentOccupied = (parsed.rooms || []).filter(
-            (r: any) => r.status === 'OCCUPIED' || r.status === 'ASSIGNED'
-          );
-          parsed.rooms = defaultRooms.map((dr, idx) => {
-            if (currentOccupied[idx]) {
-              return {
-                ...dr,
-                status: currentOccupied[idx].status,
-                currentCandidateId: currentOccupied[idx].currentCandidateId,
-                currentCandidateName: currentOccupied[idx].currentCandidateName,
-                currentInterviewId: currentOccupied[idx].currentInterviewId,
-              };
+        const validRoomMap = new Map<string, Room>(parsed.rooms.map((r: Room) => [r.id, r]));
+
+        // 1.5 Sanitize pantryTasks to strictly resolve against valid rooms (Never keep phantom demo rooms)
+        if (parsed.pantryTasks && Array.isArray(parsed.pantryTasks)) {
+          parsed.pantryTasks = parsed.pantryTasks
+            .filter((task: PantryTask) => {
+              // If task references a room that exists in Room Management, keep and sync roomName
+              const room = validRoomMap.get(task.roomId);
+              if (room) {
+                task.roomName = room.name;
+                return true;
+              }
+              // If task has no valid room in Room Management, purge orphan/demo task
+              return false;
+            })
+            .map((task: PantryTask) => {
+              const room = validRoomMap.get(task.roomId);
+              if (room) {
+                task.roomName = room.name;
+              }
+              return task;
+            });
+        } else {
+          parsed.pantryTasks = [];
+        }
+
+        // 1.6 Sanitize candidates & active room allocations
+        if (parsed.candidates && Array.isArray(parsed.candidates)) {
+          parsed.candidates = parsed.candidates.map((c: any) => {
+            if (c.assignedRoomId) {
+              const room = validRoomMap.get(c.assignedRoomId);
+              if (room) {
+                c.currentLocation = room.name;
+              } else {
+                c.assignedRoomId = undefined;
+                if (c.currentLocation && !c.currentLocation.includes('Waiting') && !c.currentLocation.includes('Departed')) {
+                  c.currentLocation = 'Waiting Area / Lounge';
+                }
+              }
+            } else if (c.currentLocation) {
+              const oldNames = ['Boardroom Alpha', 'Meeting Room 1', 'Meeting Room 2', 'Interview Pod A', 'Interview Pod B'];
+              if (oldNames.includes(c.currentLocation)) {
+                c.currentLocation = 'Waiting Area / Lounge';
+              }
             }
-            return { ...dr };
+            return c;
+          });
+        }
+
+        // 1.7 Sanitize interviews
+        if (parsed.interviews && Array.isArray(parsed.interviews)) {
+          parsed.interviews = parsed.interviews.map((intv: any) => {
+            if (intv.roomId) {
+              const room = validRoomMap.get(intv.roomId);
+              if (room) {
+                intv.roomName = room.name;
+              } else {
+                intv.roomId = undefined;
+                intv.roomName = undefined;
+              }
+            }
+            return intv;
+          });
+        }
+
+        // 1.8 Sanitize past notifications, timeline events, and audit logs
+        const demoNames = ['Boardroom Alpha', 'Meeting Room 1', 'Meeting Room 2', 'Interview Pod A', 'Interview Pod B'];
+        const sanitizeText = (txt: string): string => {
+          let res = txt;
+          demoNames.forEach((d) => {
+            if (res.includes(d)) {
+              res = res.split(d).join('Assigned Office Room');
+            }
+          });
+          return res;
+        };
+
+        if (parsed.notifications && Array.isArray(parsed.notifications)) {
+          parsed.notifications = parsed.notifications.map((n: any) => {
+            if (n.title) n.title = sanitizeText(n.title);
+            if (n.message) n.message = sanitizeText(n.message);
+            if (n.payload) {
+              if (n.payload.room) n.payload.room = sanitizeText(n.payload.room);
+              if (n.payload.action) n.payload.action = sanitizeText(n.payload.action);
+            }
+            return n;
+          });
+        }
+
+        if (parsed.timelineEvents && Array.isArray(parsed.timelineEvents)) {
+          parsed.timelineEvents = parsed.timelineEvents.map((te: any) => {
+            if (te.description) te.description = sanitizeText(te.description);
+            return te;
+          });
+        }
+
+        if (parsed.auditLogs && Array.isArray(parsed.auditLogs)) {
+          parsed.auditLogs = parsed.auditLogs.map((al: any) => {
+            if (al.details) al.details = sanitizeText(al.details);
+            return al;
           });
         }
 
