@@ -109,10 +109,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onRefresh }) => 
     fetchSettings();
   }, []);
 
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('wcr_staff_token') || sessionStorage.getItem('wcr_staff_token') || '';
+    return {
+      'x-user-role': 'ADMIN',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+  };
+
   const fetchUsers = async () => {
     setLoadingUsers(true);
     try {
-      const res = await fetch('/api/admin/users?role=ADMIN');
+      const res = await fetch('/api/admin/users?role=ADMIN', {
+        headers: getAuthHeaders(),
+        credentials: 'include',
+      });
       const data = await res.json();
       if (data.success) {
         setStaffUsers(data.users);
@@ -142,7 +153,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onRefresh }) => 
   const fetchResets = async () => {
     setLoadingResets(true);
     try {
-      const res = await fetch('/api/admin/password-resets?role=ADMIN');
+      const res = await fetch('/api/admin/password-resets?role=ADMIN', {
+        headers: getAuthHeaders(),
+        credentials: 'include',
+      });
       const data = await res.json();
       if (data.success) {
         setResetRequests(data.requests);
@@ -157,7 +171,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onRefresh }) => 
   const fetchLogs = async () => {
     setLoadingLogs(true);
     try {
-      const res = await fetch('/api/audit-logs');
+      const res = await fetch('/api/audit-logs', {
+        headers: getAuthHeaders(),
+        credentials: 'include',
+      });
       const data = await res.json();
       if (data.success) {
         setAuditLogs(data.logs);

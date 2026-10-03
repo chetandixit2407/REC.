@@ -22,6 +22,8 @@ import {
 } from 'lucide-react';
 import type { Candidate, UserRole, GovernmentIdType } from '../types/index.ts';
 import { formatDateTime } from '../utils/dateFormatter.ts';
+import { authenticatedFetch } from '../utils/apiClient.ts';
+import { PdfCanvasViewer } from './PdfCanvasViewer.tsx';
 
 export type DocumentType = 'RESUME' | 'GOVERNMENT_ID';
 
@@ -45,6 +47,7 @@ export const SecureDocumentViewerModal: React.FC<SecureDocumentViewerModalProps>
   const [showFullId, setShowFullId] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [documentBlob, setDocumentBlob] = useState<Blob | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -56,21 +59,24 @@ export const SecureDocumentViewerModal: React.FC<SecureDocumentViewerModalProps>
     ? candidate.resumeFileName || `${candidate.fullName.replace(/\s+/g, '_')}_Resume.pdf`
     : govId?.originalFileName || `${candidate.fullName.replace(/\s+/g, '_')}_${govId?.idType || 'GovID'}.pdf`;
 
-  const mimeType = isResume
+  const initialMimeType = isResume
     ? candidate.resumeMimeType || (fileName.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream')
-    : govId?.mimeType || 'application/pdf';
+    : govId?.mimeType || (fileName.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
+
+  const [detectedMime, setDetectedMime] = useState<string>(initialMimeType);
 
   const isWordDoc =
     fileName.toLowerCase().endsWith('.doc') ||
     fileName.toLowerCase().endsWith('.docx') ||
-    mimeType.includes('word') ||
-    mimeType.includes('officedocument');
+    detectedMime.includes('word') ||
+    detectedMime.includes('officedocument');
 
   const isImage =
+    detectedMime.startsWith('image/') ||
     fileName.toLowerCase().endsWith('.png') ||
     fileName.toLowerCase().endsWith('.jpg') ||
     fileName.toLowerCase().endsWith('.jpeg') ||
-    mimeType.startsWith('image/');
+    fileName.toLowerCase().endsWith('.webp');
 
   const fileSize = isResume ? candidate.resumeFileSize || '1.4 MB' : govId?.fileSize || '1.2 MB';
   const uploadedAt = isResume
@@ -81,12 +87,12 @@ export const SecureDocumentViewerModal: React.FC<SecureDocumentViewerModalProps>
 
   // Authenticated endpoints on the same origin (no Chrome blocking)
   const apiDocEndpoint = isResume
-    ? `/api/candidates/${candidate.id}/resume?role=${currentRole}`
-    : `/api/candidates/${candidate.id}/government-id?role=${currentRole}`;
+    ? `/api/candidates/${candidate.id}/resume?role=${encodeURIComponent(currentRole)}`
+    : `/api/candidates/${candidate.id}/government-id?role=${encodeURIComponent(currentRole)}`;
 
   const downloadEndpoint = isResume
-    ? `/api/candidates/${candidate.id}/resume/download?role=${currentRole}`
-    : `/api/candidates/${candidate.id}/govid/download?role=${currentRole}`;
+    ? `/api/candidates/${candidate.id}/resume/download?role=${encodeURIComponent(currentRole)}`
+    : `/api/candidates/${candidate.id}/govid/download?role=${encodeURIComponent(currentRole)}`;
 
   // Fetch document safely as Blob to avoid any cross-origin or top-frame Chrome blocking
   useEffect(() => {
@@ -96,24 +102,39 @@ export const SecureDocumentViewerModal: React.FC<SecureDocumentViewerModalProps>
     async function loadDocumentBlob() {
       setLoading(true);
       setLoadError(null);
+      setBlobUrl(null);
+      setDocumentBlob(null);
       try {
-        const res = await fetch(apiDocEndpoint);
+        const res = await authenticatedFetch(apiDocEndpoint);
         if (!res.ok) {
+          if (res.status === 401) {
+            throw new Error('Unauthorized: Staff authentication required to access this document.');
+          }
+          if (res.status === 403) {
+            throw new Error('You do not have permission to view this document.');
+          }
+          if (res.status === 404) {
+            throw new Error('Document not found.');
+          }
+          if (res.status >= 500) {
+            throw new Error('Unable to load document. Please try again.');
+          }
           throw new Error(`Failed to load document (${res.status} ${res.statusText})`);
         }
+
         const blob = await res.blob();
+        const serverMime = res.headers.get('content-type') || blob.type || initialMimeType;
+
         if (active) {
+          setDetectedMime(serverMime);
+          setDocumentBlob(blob);
           createdUrl = URL.createObjectURL(blob);
           setBlobUrl(createdUrl);
-          // Estimate page count for simulated multi-page display
-          if (blob.size > 2000000) setTotalPages(3);
-          else if (blob.size > 500000) setTotalPages(2);
-          else setTotalPages(1);
         }
       } catch (err: any) {
         if (active) {
           console.error('Error fetching document blob:', err);
-          setLoadError(err.message || 'Unable to retrieve document from persistent server storage.');
+          setLoadError(err.message || 'Unable to load document. Please try again.');
         }
       } finally {
         if (active) setLoading(false);
@@ -324,7 +345,8 @@ export const SecureDocumentViewerModal: React.FC<SecureDocumentViewerModalProps>
           {loading ? (
             <div className="flex-1 flex flex-col items-center justify-center space-y-3 py-16">
               <div className="w-10 h-10 border-3 border-amber-400 border-t-transparent rounded-full animate-spin" />
-              <p className="text-xs text-slate-400 font-medium">Decrypting & Loading Internal Document...</p>
+              <p className="text-xs text-slate-300 font-medium">Opening {isResume ? 'Resume' : 'Government ID'}...</p>
+              <p className="text-[11px] text-slate-500">Decrypting & rendering in-app document pages</p>
             </div>
           ) : loadError ? (
             <div className="flex-1 flex flex-col items-center justify-center p-8 text-center max-w-md my-auto">
@@ -411,33 +433,17 @@ export const SecureDocumentViewerModal: React.FC<SecureDocumentViewerModalProps>
                 className="max-h-[75vh] max-w-full object-contain rounded-2xl border border-slate-800 shadow-2xl bg-slate-900"
               />
             </div>
-          ) : blobUrl ? (
-            /* INTERNAL PDF VIEWER EMBED WITH SAME-ORIGIN BLOB (ZERO CHROME BLOCKING) */
-            <div
-              className="w-full flex-1 rounded-2xl overflow-hidden border border-slate-800 shadow-2xl bg-white flex flex-col"
-              style={{
-                transform: zoomLevel !== 100 ? `scale(${zoomLevel / 100})` : undefined,
-                transformOrigin: 'top center',
-                minHeight: '65vh',
-                transition: 'transform 0.15s ease-out',
-              }}
-            >
-              <object
-                data={blobUrl}
-                type="application/pdf"
-                className="w-full flex-1 border-0"
-              >
-                <div className="p-8 text-center bg-slate-900 text-slate-100 flex flex-col items-center justify-center h-full">
-                  <p className="text-sm font-bold mb-2">PDF Document Ready</p>
-                  <p className="text-xs text-slate-400 mb-4">Your browser can download or preview this PDF.</p>
-                  <button
-                    onClick={handleDownload}
-                    className="px-5 py-2.5 bg-amber-500 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-1.5"
-                  >
-                    <Download className="w-4 h-4" /> Download PDF
-                  </button>
-                </div>
-              </object>
+          ) : blobUrl || documentBlob ? (
+            /* HIGH-FIDELITY IN-APP PDF CANVAS VIEWER (WORKS IN ALL BROWSERS & IFRAMES) */
+            <div className="w-full flex-1 flex flex-col min-h-0 overflow-hidden">
+              <PdfCanvasViewer
+                blob={documentBlob}
+                blobUrl={blobUrl}
+                zoomLevel={zoomLevel}
+                currentPage={currentPage}
+                onTotalPagesDetected={setTotalPages}
+                onPageChange={setCurrentPage}
+              />
             </div>
           ) : null}
         </div>

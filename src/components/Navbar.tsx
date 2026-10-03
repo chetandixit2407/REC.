@@ -12,8 +12,10 @@ import {
   Sparkles,
   Wifi,
   WifiOff,
+  LogOut,
+  User as UserIcon,
 } from 'lucide-react';
-import type { UserRole } from '../types/index.ts';
+import type { UserRole, User } from '../types/index.ts';
 import { PWAInstallButton } from './PWAInstallButton.tsx';
 
 interface NavbarProps {
@@ -25,6 +27,8 @@ interface NavbarProps {
   onOpenCheckIn: () => void;
   onOpenWalkIn: () => void;
   isRealtimeConnected: boolean;
+  currentUser?: User | null;
+  onLogout?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -36,8 +40,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenCheckIn,
   onOpenWalkIn,
   isRealtimeConnected,
+  currentUser,
+  onLogout,
 }) => {
-  const roles: { role: UserRole; label: string; icon: any; color: string }[] = [
+  const allRoles: { role: UserRole; label: string; icon: any; color: string }[] = [
     { role: 'HR', label: 'HR Lead', icon: Users, color: 'text-amber-400' },
     { role: 'ADMIN', label: 'Admin Ops', icon: Shield, color: 'text-purple-400' },
     { role: 'CEO', label: 'CEO Suite', icon: Award, color: 'text-emerald-400' },
@@ -45,6 +51,17 @@ export const Navbar: React.FC<NavbarProps> = ({
     { role: 'RECEPTION', label: 'Front Desk', icon: Building, color: 'text-cyan-400' },
     { role: 'PANTRY', label: 'Pantry Steward', icon: Coffee, color: 'text-amber-300' },
   ];
+
+  // Only Admin, CEO, and CO_FOUNDER have multi-view capability
+  const canSwitchViews =
+    !currentUser ||
+    currentUser.role === 'ADMIN' ||
+    currentUser.role === 'CEO' ||
+    currentUser.role === 'CO_FOUNDER';
+
+  const visibleRoles = canSwitchViews
+    ? allRoles
+    : allRoles.filter((r) => r.role === currentUser.role);
 
   return (
     <header className="sticky top-0 z-40 bg-slate-950/90 backdrop-blur-md border-b border-slate-800/80 px-4 sm:px-6 py-2.5">
@@ -88,29 +105,31 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
 
-        {/* Role Switcher Pill Bar */}
-        <div className="flex items-center bg-slate-900 border border-slate-800 rounded-2xl p-1 gap-1 overflow-x-auto max-w-full">
-          {roles.map(({ role, label, icon: Icon, color }) => {
-            const active = currentRole === role;
-            return (
-              <button
-                key={role}
-                onClick={() => onSelectRole(role)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold transition shrink-0 cursor-pointer ${
-                  active
-                    ? 'bg-amber-500 text-slate-950 shadow-sm font-bold'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                }`}
-              >
-                <Icon className={`w-3.5 h-3.5 ${active ? 'text-slate-950' : color}`} />
-                <span className="hidden sm:inline">{label}</span>
-                <span className="sm:hidden">{role}</span>
-              </button>
-            );
-          })}
-        </div>
+        {/* Role View Switcher */}
+        {visibleRoles.length > 1 && (
+          <div className="flex items-center bg-slate-900 border border-slate-800 rounded-2xl p-1 gap-1 overflow-x-auto max-w-full">
+            {visibleRoles.map(({ role, label, icon: Icon, color }) => {
+              const active = currentRole === role;
+              return (
+                <button
+                  key={role}
+                  onClick={() => onSelectRole(role)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold transition shrink-0 cursor-pointer ${
+                    active
+                      ? 'bg-amber-500 text-slate-950 shadow-sm font-bold'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                  }`}
+                >
+                  <Icon className={`w-3.5 h-3.5 ${active ? 'text-slate-950' : color}`} />
+                  <span className="hidden sm:inline">{label}</span>
+                  <span className="sm:hidden">{role}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
-        {/* Action Controls & Notifications */}
+        {/* Action Controls, User Info, & Notifications */}
         <div className="flex items-center gap-2">
           {/* Quick Intake buttons */}
           <button
@@ -144,6 +163,23 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
             )}
           </button>
+
+          {/* User Badge & Logout */}
+          {currentUser && (
+            <div className="flex items-center gap-2 pl-1 border-l border-slate-800">
+              <div className="hidden sm:flex flex-col text-right">
+                <span className="text-xs font-bold text-white leading-tight">{currentUser.name}</span>
+                <span className="text-[10px] font-mono text-amber-400">{currentUser.role}</span>
+              </div>
+              <button
+                onClick={onLogout}
+                className="p-2 rounded-xl bg-slate-900 hover:bg-rose-500/20 border border-slate-800 hover:border-rose-500/40 text-slate-400 hover:text-rose-300 transition cursor-pointer"
+                title="Sign out of staff console"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
+          )}
 
           {/* PWA Install Button */}
           <PWAInstallButton />

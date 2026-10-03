@@ -52,24 +52,13 @@ export const GeneralNewCandidateRegister: React.FC<GeneralNewCandidateRegisterPr
   const [formData, setFormData] = useState({
     fullName: '',
     phone: '',
-    email: '',
-    address: '',
-    city: 'Gurugram',
-    state: 'Haryana',
-    pincode: '122002',
     position: '',
-    department: 'Sales & Business Development',
     totalExperience: '',
     relevantExperience: '',
     currentCompany: '',
-    qualification: '',
-    skills: '',
-    noticePeriod: '',
-    expectedSalary: '',
     purpose: 'Interview / Job Application',
     positionAppliedFor: '',
     howDidYouHear: '',
-    departmentToMeet: 'Recruitment & HR',
     personToMeet: '',
   });
 
@@ -217,24 +206,13 @@ export const GeneralNewCandidateRegister: React.FC<GeneralNewCandidateRegisterPr
     setFormData({
       fullName: '',
       phone: '',
-      email: '',
-      address: '',
-      city: 'Gurugram',
-      state: 'Haryana',
-      pincode: '122002',
       position: '',
-      department: 'Sales & Business Development',
       totalExperience: '',
       relevantExperience: '',
       currentCompany: '',
-      qualification: '',
-      skills: '',
-      noticePeriod: '',
-      expectedSalary: '',
       purpose: 'Interview / Job Application',
       positionAppliedFor: '',
       howDidYouHear: '',
-      departmentToMeet: 'Recruitment & HR',
       personToMeet: '',
     });
     setGovIdType('AADHAAR');
@@ -394,13 +372,13 @@ export const GeneralNewCandidateRegister: React.FC<GeneralNewCandidateRegisterPr
   // Validation per step
   const validateStep = (currentStep: number): boolean => {
     if (currentStep === 1) {
-      if (!formData.fullName.trim() || !formData.phone.trim() || !formData.email.trim()) {
-        setSubmitError('Please complete all mandatory personal fields: Full Name, Phone, and Email.');
+      if (!formData.fullName.trim() || !formData.phone.trim()) {
+        setSubmitError('Please complete all mandatory personal fields: Full Name and Mobile Number.');
         return false;
       }
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(formData.email)) {
-        setSubmitError('Please provide a valid email address.');
+      const cleanPhone = formData.phone.trim().replace(/[\s-]/g, '');
+      if (cleanPhone.length < 10) {
+        setSubmitError('Please provide a valid 10-digit mobile number.');
         return false;
       }
     }
@@ -569,14 +547,10 @@ export const GeneralNewCandidateRegister: React.FC<GeneralNewCandidateRegisterPr
             </div>
           </div>
 
-          <div className="pt-4 flex flex-col sm:flex-row justify-center gap-3">
-            <button
-              onClick={initFreshSession}
-              className="px-6 py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-black rounded-xl shadow-xl flex items-center justify-center gap-2 cursor-pointer transition"
-            >
-              <QrCode className="w-4 h-4" />
-              Scan QR Again / Start New Registration
-            </button>
+          <div className="pt-2">
+            <div className="p-3 bg-slate-950/70 border border-slate-800 rounded-xl text-xs text-slate-400">
+              This one-time registration link is closed. For assistance, please ask the front desk reception team.
+            </div>
           </div>
         </div>
       </div>
@@ -609,9 +583,6 @@ export const GeneralNewCandidateRegister: React.FC<GeneralNewCandidateRegisterPr
             <p className="text-sm text-slate-300 font-medium mt-1">
               Your registration has been submitted successfully.
             </p>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold rounded-full mt-2">
-              <span>Automatic exit in approximately 2 seconds...</span>
-            </div>
           </div>
 
           {liveNotice && (
@@ -679,14 +650,11 @@ export const GeneralNewCandidateRegister: React.FC<GeneralNewCandidateRegisterPr
             </div>
           </div>
 
-          <div className="pt-4 flex flex-col sm:flex-row justify-center gap-3">
-            <button
-              onClick={initFreshSession}
-              className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <QrCode className="w-3.5 h-3.5 text-amber-400" />
-              New Registration (Scan QR)
-            </button>
+          <div className="pt-3">
+            <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-xs text-emerald-300 font-semibold text-center flex items-center justify-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>Registration Completed & Locked. Please wait in the reception lounge.</span>
+            </div>
           </div>
         </div>
       </div>
@@ -791,66 +759,6 @@ export const GeneralNewCandidateRegister: React.FC<GeneralNewCandidateRegisterPr
               />
             </div>
           </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">
-              Email Address <span className="text-amber-400">*</span>
-            </label>
-            <input
-              type="email"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              placeholder="yourname@example.com"
-              className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-hidden focus:border-amber-400 transition"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">
-              Current Residential Address
-            </label>
-            <input
-              type="text"
-              value={formData.address}
-              onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-              placeholder="Apartment, Street address, Locality"
-              className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-hidden focus:border-amber-400 transition"
-            />
-          </div>
-
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">City</label>
-              <input
-                type="text"
-                value={formData.city}
-                onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                placeholder="City"
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-hidden focus:border-amber-400"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">State</label>
-              <input
-                type="text"
-                value={formData.state}
-                onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                placeholder="State"
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-hidden focus:border-amber-400"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Pincode</label>
-              <input
-                type="text"
-                value={formData.pincode}
-                onChange={(e) => setFormData({ ...formData, pincode: e.target.value })}
-                placeholder="122002"
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-hidden focus:border-amber-400"
-              />
-            </div>
-          </div>
         </div>
       )}
 
@@ -872,19 +780,14 @@ export const GeneralNewCandidateRegister: React.FC<GeneralNewCandidateRegisterPr
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Department</label>
-              <select
-                value={formData.department}
-                onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+              <label className="block text-xs font-semibold text-slate-300 mb-1">Current / Previous Company</label>
+              <input
+                type="text"
+                value={formData.currentCompany}
+                onChange={(e) => setFormData({ ...formData, currentCompany: e.target.value })}
+                placeholder="e.g. DLF / Godrej / Sobha / N/A"
                 className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-hidden focus:border-amber-400"
-              >
-                <option value="Sales & Business Development">Sales & Business Development</option>
-                <option value="Luxury Advisory & CRM">Luxury Advisory & CRM</option>
-                <option value="Legal & Conveyancing">Legal & Conveyancing</option>
-                <option value="Operations & Strategy">Operations & Strategy</option>
-                <option value="Human Resources">Human Resources</option>
-                <option value="Finance & Accounts">Finance & Accounts</option>
-              </select>
+              />
             </div>
           </div>
 
@@ -900,59 +803,15 @@ export const GeneralNewCandidateRegister: React.FC<GeneralNewCandidateRegisterPr
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Current / Previous Company</label>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">Relevant Experience</label>
               <input
                 type="text"
-                value={formData.currentCompany}
-                onChange={(e) => setFormData({ ...formData, currentCompany: e.target.value })}
-                placeholder="e.g. DLF / Godrej / Sobha / N/A"
+                value={formData.relevantExperience}
+                onChange={(e) => setFormData({ ...formData, relevantExperience: e.target.value })}
+                placeholder="e.g. 4 Years in Real Estate Advisory"
                 className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-hidden focus:border-amber-400"
               />
             </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Highest Qualification</label>
-              <input
-                type="text"
-                value={formData.qualification}
-                onChange={(e) => setFormData({ ...formData, qualification: e.target.value })}
-                placeholder="e.g. MBA / B.Tech"
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-hidden focus:border-amber-400"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Notice Period</label>
-              <input
-                type="text"
-                value={formData.noticePeriod}
-                onChange={(e) => setFormData({ ...formData, noticePeriod: e.target.value })}
-                placeholder="e.g. Immediate / 15 Days"
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-hidden focus:border-amber-400"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Expected Salary (CTC)</label>
-              <input
-                type="text"
-                value={formData.expectedSalary}
-                onChange={(e) => setFormData({ ...formData, expectedSalary: e.target.value })}
-                placeholder="e.g. ₹15,00,000 p.a."
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-hidden focus:border-amber-400"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Key Skills & Competencies</label>
-            <input
-              type="text"
-              value={formData.skills}
-              onChange={(e) => setFormData({ ...formData, skills: e.target.value })}
-              placeholder="e.g. Luxury Sales, High-Net-Worth Advisory, Negotiation"
-              className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-hidden focus:border-amber-400"
-            />
           </div>
         </div>
       )}
@@ -972,19 +831,6 @@ export const GeneralNewCandidateRegister: React.FC<GeneralNewCandidateRegisterPr
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Department to Meet</label>
-              <input
-                type="text"
-                value={formData.departmentToMeet}
-                onChange={(e) => setFormData({ ...formData, departmentToMeet: e.target.value })}
-                placeholder="e.g. Recruitment & HR / Sales Head"
-                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-hidden focus:border-amber-400"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1">
                 Person / Host to Meet (if known)
               </label>
@@ -996,16 +842,17 @@ export const GeneralNewCandidateRegister: React.FC<GeneralNewCandidateRegisterPr
                 className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-hidden focus:border-amber-400"
               />
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">How did you hear about WCR?</label>
-              <input
-                type="text"
-                value={formData.howDidYouHear}
-                onChange={(e) => setFormData({ ...formData, howDidYouHear: e.target.value })}
-                placeholder="e.g. LinkedIn, Job Portal, Employee Referral, Walk-in"
-                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-hidden focus:border-amber-400"
-              />
-            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1">How did you hear about WCR?</label>
+            <input
+              type="text"
+              value={formData.howDidYouHear}
+              onChange={(e) => setFormData({ ...formData, howDidYouHear: e.target.value })}
+              placeholder="e.g. LinkedIn, Job Portal, Employee Referral, Walk-in"
+              className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-hidden focus:border-amber-400"
+            />
           </div>
         </div>
       )}
@@ -1278,12 +1125,6 @@ export const GeneralNewCandidateRegister: React.FC<GeneralNewCandidateRegisterPr
                 </span>
               </div>
               <div className="p-2 bg-slate-900 rounded-lg flex items-center justify-between">
-                <span className="text-slate-300">Email Address Format</span>
-                <span className="text-emerald-400 font-bold flex items-center gap-1">
-                  <Check className="w-3 h-3" /> Passed
-                </span>
-              </div>
-              <div className="p-2 bg-slate-900 rounded-lg flex items-center justify-between">
                 <span className="text-slate-300">Resume Document</span>
                 <span className="text-emerald-400 font-bold flex items-center gap-1">
                   <Check className="w-3 h-3" /> Uploaded
@@ -1317,7 +1158,7 @@ export const GeneralNewCandidateRegister: React.FC<GeneralNewCandidateRegisterPr
               <div>
                 <h4 className="text-sm font-bold text-white">{formData.fullName || '[EMPTY]'}</h4>
                 <p className="text-amber-400 font-medium">{formData.position || '[EMPTY]'}</p>
-                <p className="text-[11px] text-slate-400">{formData.phone} • {formData.email}</p>
+                <p className="text-[11px] text-slate-400">{formData.phone}</p>
               </div>
             </div>
 
@@ -1335,8 +1176,8 @@ export const GeneralNewCandidateRegister: React.FC<GeneralNewCandidateRegisterPr
                 <span className="text-slate-200 font-medium">{formData.totalExperience || 'Fresher'}</span>
               </div>
               <div>
-                <span className="text-slate-400">Department:</span>{' '}
-                <span className="text-slate-200 font-medium">{formData.department}</span>
+                <span className="text-slate-400">Company:</span>{' '}
+                <span className="text-slate-200 font-medium">{formData.currentCompany || 'N/A'}</span>
               </div>
             </div>
 

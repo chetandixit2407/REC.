@@ -70,10 +70,21 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
             ) : (
               notifications.map((notif) => {
                 const isHigh = notif.priority === 'HIGH' || notif.priority === 'CRITICAL';
+                const candidateId = notif.entityId || notif.payload?.candidateId;
                 return (
                   <div
                     key={notif.id}
+                    onClick={(e) => {
+                      if ((e.target as HTMLElement).closest('button')) return;
+                      if (candidateId) {
+                        onActionClick('VIEW_CANDIDATE', { candidateId });
+                        onMarkRead(notif.id);
+                        onClose();
+                      }
+                    }}
                     className={`p-3.5 rounded-2xl border transition text-xs space-y-2 relative ${
+                      candidateId ? 'cursor-pointer hover:border-amber-500/60' : ''
+                    } ${
                       notif.read
                         ? 'bg-slate-950/40 border-slate-800 text-slate-300'
                         : isHigh
@@ -137,6 +148,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
                             onClick={() => {
                               onActionClick(btn.actionKey, btn.payload);
                               onMarkRead(notif.id);
+                              onClose();
                             }}
                             className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[10px] shadow-xs transition cursor-pointer flex items-center gap-1"
                           >

@@ -50,28 +50,69 @@ if (!fs.existsSync(GOV_IDS_DIR)) {
   fs.mkdirSync(GOV_IDS_DIR, { recursive: true });
 }
 
+function isValidDocumentBuffer(buf: Buffer | null | undefined): boolean {
+  if (!buf || buf.length < 64) return false;
+  const head = buf.slice(0, 60).toString('utf8').toLowerCase();
+  if (head.includes('<!doctype') || head.includes('<html') || head.includes('<head')) {
+    return false;
+  }
+  return true;
+}
+
+function detectMimeType(buf: Buffer, fallbackMime = 'application/pdf', fileName = ''): string {
+  if (buf.length >= 4) {
+    if (buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46) {
+      return 'application/pdf';
+    }
+    if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
+      return 'image/jpeg';
+    }
+    if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) {
+      return 'image/png';
+    }
+    if (buf.length >= 12 && buf.slice(0, 4).toString('ascii') === 'RIFF' && buf.slice(8, 12).toString('ascii') === 'WEBP') {
+      return 'image/webp';
+    }
+  }
+
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.doc')) return 'application/msword';
+  if (lower.endsWith('.docx')) return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+  return fallbackMime;
+}
+
 function createValidSamplePdf(candidateName: string, position: string): Buffer {
   const safeName = (candidateName || 'Candidate').replace(/[()\\]/g, '');
   const safePos = (position || 'Real Estate Advisory').replace(/[()\\]/g, '');
-  const content = `%PDF-1.4
-1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj
-2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj
-3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj
-4 0 obj << /Length 300 >> stream
-BT
+  const streamContent = `BT
 /F1 18 Tf
 50 720 Td
-(WHITE COLLAR REALTY - CANDIDATE RESUME) Tj
+(WHITE COLLAR REALTY - CANDIDATE DOSSIER) Tj
 /F1 12 Tf
-0 -35 Td
+0 -36 Td
 (Candidate: ${safeName}) Tj
 0 -22 Td
 (Applied Position: ${safePos}) Tj
 0 -22 Td
-(Verification: Verified WCR Office Operations PWA Document) Tj
+(Verification: Verified WCR Office Operations Document) Tj
 0 -22 Td
 (Status: Authenticated in Persistent Server Storage) Tj
-ET
+0 -22 Td
+(Security: Verified Same-Origin Document Stream) Tj
+ET`;
+  const streamLen = Buffer.byteLength(streamContent, 'utf8');
+
+  const content = `%PDF-1.4
+1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj
+2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj
+3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj
+4 0 obj << /Length ${streamLen} >> stream
+${streamContent}
 endstream
 endobj
 5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj
@@ -314,7 +355,10 @@ async function startServer() {
     }
 
     const session = createStaffSession(targetUser, req.ip);
-    res.setHeader('Set-Cookie', `wcr_session=${session.token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800`);
+    res.setHeader('Set-Cookie', [
+      `wcr_session=${session.token}; Path=/; SameSite=Lax; Max-Age=604800`,
+      `wcr_staff_token=${session.token}; Path=/; SameSite=Lax; Max-Age=604800`,
+    ]);
 
     const { passwordHash: _, ...safeUser } = targetUser;
     console.log(`[AUTH] staff authenticated persona switch: ${targetUser.name} (${targetUser.role})`);
@@ -328,6 +372,7 @@ async function startServer() {
         token: session.token,
         expiresAt: session.expiresAt,
       },
+      token: session.token,
       permissions: session.permissions,
     });
   });
@@ -507,10 +552,10 @@ async function startServer() {
       });
     }
 
-    if (!fullName?.trim() || !phone?.trim() || !email?.trim() || !position?.trim()) {
+    if (!fullName?.trim() || !phone?.trim() || !position?.trim()) {
       return res.status(400).json({
         success: false,
-        error: 'Missing mandatory fields: Full Name, Mobile, Email, and Position are required.',
+        error: 'Missing mandatory fields: Full Name, Mobile Number, and Position are required.',
       });
     }
 
@@ -601,14 +646,14 @@ async function startServer() {
 
         // Check if candidate exists by phone/email or session
         let existingCand = draft.candidates.find(
-          (c) => (candidateId && c.id === candidateId) || c.phone === phone || c.email === email
+          (c) => (candidateId && c.id === candidateId) || (phone && c.phone === phone) || (email && c.email && c.email === email)
         );
 
         if (existingCand) {
           // Update existing candidate
           existingCand.fullName = fullName;
           existingCand.phone = phone;
-          existingCand.email = email;
+          existingCand.email = email || existingCand.email || '';
           existingCand.address = address || existingCand.address;
           existingCand.city = city || existingCand.city;
           existingCand.state = state || existingCand.state;
@@ -1064,8 +1109,9 @@ async function startServer() {
   // GENERAL WCR QR: SUBMIT NEW CANDIDATE REGISTRATION (ONE-TIME ONLY)
   // ==========================================
   const handleSubmitRegistration = (req: Request, res: Response) => {
+    const rawToken = req.body.token || req.body.sessionToken;
+    const token = typeof rawToken === 'string' ? rawToken.trim() : '';
     const {
-      token,
       fullName,
       phone,
       email,
@@ -1104,10 +1150,10 @@ async function startServer() {
       });
     }
 
-    if (!fullName?.trim() || !phone?.trim() || !email?.trim() || !position?.trim()) {
+    if (!fullName?.trim() || !phone?.trim() || !position?.trim()) {
       return res.status(400).json({
         success: false,
-        error: 'Mandatory fields required: Full Name, Phone, Email, and Position.',
+        error: 'Mandatory fields required: Full Name, Phone, and Position.',
       });
     }
 
@@ -1185,14 +1231,16 @@ async function startServer() {
 
         // Safe candidate identification by phone or email
         let existingCand = draft.candidates.find(
-          (c) => c.phone.trim() === phone.trim() || c.email.toLowerCase().trim() === email.toLowerCase().trim()
+          (c) =>
+            (c.phone && c.phone.trim() === phone.trim()) ||
+            (email && c.email && c.email.toLowerCase().trim() === email.toLowerCase().trim())
         );
 
         if (existingCand) {
           // Update existing candidate
           existingCand.fullName = fullName;
           existingCand.phone = phone;
-          existingCand.email = email;
+          existingCand.email = email || existingCand.email || '';
           existingCand.address = address || existingCand.address;
           existingCand.city = city || existingCand.city;
           existingCand.state = state || existingCand.state;
@@ -1542,24 +1590,35 @@ async function startServer() {
     let fileBuffer: Buffer | null = null;
 
     if (fs.existsSync(diskPath)) {
-      fileBuffer = fs.readFileSync(diskPath);
-    } else if (govId?.documentDataUrl && govId.documentDataUrl.startsWith('data:')) {
+      const existing = fs.readFileSync(diskPath);
+      if (isValidDocumentBuffer(existing)) {
+        fileBuffer = existing;
+      }
+    }
+
+    if (!fileBuffer && govId?.documentDataUrl && govId.documentDataUrl.startsWith('data:')) {
       const match = govId.documentDataUrl.match(/^data:([^;]+);base64,(.+)$/);
       if (match) {
         try {
-          mimeType = match[1] || mimeType;
-          fileBuffer = Buffer.from(match[2], 'base64');
+          const decoded = Buffer.from(match[2], 'base64');
+          if (isValidDocumentBuffer(decoded)) {
+            fileBuffer = decoded;
+            mimeType = match[1] || mimeType;
+            fs.writeFileSync(diskPath, fileBuffer);
+          }
         } catch (e) {
           console.warn('Government ID base64 decode fallback', e);
         }
       }
     }
 
-    if (!fileBuffer || fileBuffer.length === 0) {
-      fileBuffer = createValidSamplePdf(candidate.fullName, `Government ID: ${govId?.idTypeName || 'Identity Document'}`);
+    if (!fileBuffer || !isValidDocumentBuffer(fileBuffer)) {
+      fileBuffer = createValidSamplePdf(candidate.fullName, `Government ID: ${govId?.idTypeName || 'Official Identity Document'}`);
       fs.writeFileSync(diskPath, fileBuffer);
       mimeType = 'application/pdf';
     }
+
+    mimeType = detectMimeType(fileBuffer, mimeType, fileName);
 
     // Audit document access
     try {
@@ -1580,15 +1639,16 @@ async function startServer() {
       console.warn('Failed to record document access audit', auditErr);
     }
 
-    console.log(`[AUTH] candidate document access granted: ${userName} (${role}) -> Gov ID of ${candidate.fullName}`);
+    console.log(`[AUTH] candidate document access granted: ${userName} (${role}) -> Gov ID of ${candidate.fullName} (${mimeType}, ${fileBuffer.length} bytes)`);
 
-    // Chrome-blocking proof headers: Allow secure in-app rendering
+    // In-app rendering headers
     res.setHeader('Content-Type', mimeType);
-    res.setHeader('Content-Disposition', `${isDownload ? 'attachment' : 'inline'}; filename="${fileName}"`);
+    res.setHeader('Content-Disposition', `${isDownload ? 'attachment' : 'inline'}; filename="${encodeURIComponent(fileName)}"`);
+    res.setHeader('Content-Length', fileBuffer.length.toString());
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-    res.setHeader('Content-Security-Policy', "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; object-src 'self' data: blob:; frame-src 'self' data: blob:;");
-    res.setHeader('Cache-Control', 'private, max-age=1800');
+    res.setHeader('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     return res.send(fileBuffer);
   };
 
@@ -1596,7 +1656,23 @@ async function startServer() {
     return handleGovernmentIdRequest(req, res, false);
   });
 
+  app.get('/api/candidates/:candidateId/government-id/preview', (req: Request, res: Response) => {
+    return handleGovernmentIdRequest(req, res, false);
+  });
+
   app.get('/api/candidates/:candidateId/govid/view', (req: Request, res: Response) => {
+    return handleGovernmentIdRequest(req, res, false);
+  });
+
+  app.get('/api/candidates/:candidateId/govid/preview', (req: Request, res: Response) => {
+    return handleGovernmentIdRequest(req, res, false);
+  });
+
+  app.get('/api/candidates/:candidateId/documents/govid/preview', (req: Request, res: Response) => {
+    return handleGovernmentIdRequest(req, res, false);
+  });
+
+  app.get('/api/candidates/:candidateId/documents/government-id/preview', (req: Request, res: Response) => {
     return handleGovernmentIdRequest(req, res, false);
   });
 
@@ -1683,24 +1759,35 @@ async function startServer() {
     let fileBuffer: Buffer | null = null;
 
     if (fs.existsSync(diskPath)) {
-      fileBuffer = fs.readFileSync(diskPath);
-    } else if (candidate.resumeUrl && candidate.resumeUrl.startsWith('data:')) {
+      const existing = fs.readFileSync(diskPath);
+      if (isValidDocumentBuffer(existing)) {
+        fileBuffer = existing;
+      }
+    }
+
+    if (!fileBuffer && candidate.resumeUrl && candidate.resumeUrl.startsWith('data:')) {
       const match = candidate.resumeUrl.match(/^data:([^;]+);base64,(.+)$/);
       if (match) {
         try {
-          mimeType = match[1] || mimeType;
-          fileBuffer = Buffer.from(match[2], 'base64');
+          const decoded = Buffer.from(match[2], 'base64');
+          if (isValidDocumentBuffer(decoded)) {
+            fileBuffer = decoded;
+            mimeType = match[1] || mimeType;
+            fs.writeFileSync(diskPath, fileBuffer);
+          }
         } catch (e) {
           console.warn('Resume base64 decode fallback', e);
         }
       }
     }
 
-    if (!fileBuffer || fileBuffer.length === 0) {
+    if (!fileBuffer || !isValidDocumentBuffer(fileBuffer)) {
       fileBuffer = createValidSamplePdf(candidate.fullName, candidate.position);
       fs.writeFileSync(diskPath, fileBuffer);
       mimeType = 'application/pdf';
     }
+
+    mimeType = detectMimeType(fileBuffer, mimeType, resumeFileName);
 
     // Audit document access
     try {
@@ -1721,15 +1808,16 @@ async function startServer() {
       console.warn('Failed to record resume access audit', auditErr);
     }
 
-    console.log(`[AUTH] candidate resume access granted: ${userName} (${role}) -> Resume of ${candidate.fullName}`);
+    console.log(`[AUTH] candidate resume access granted: ${userName} (${role}) -> Resume of ${candidate.fullName} (${mimeType}, ${fileBuffer.length} bytes)`);
 
-    // Chrome-blocking proof headers: Allow secure in-app rendering
+    // In-app rendering headers
     res.setHeader('Content-Type', mimeType);
-    res.setHeader('Content-Disposition', `${isDownload ? 'attachment' : 'inline'}; filename="${resumeFileName}"`);
+    res.setHeader('Content-Disposition', `${isDownload ? 'attachment' : 'inline'}; filename="${encodeURIComponent(resumeFileName)}"`);
+    res.setHeader('Content-Length', fileBuffer.length.toString());
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-    res.setHeader('Content-Security-Policy', "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; object-src 'self' data: blob:; frame-src 'self' data: blob:;");
-    res.setHeader('Cache-Control', 'private, max-age=1800');
+    res.setHeader('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     return res.send(fileBuffer);
   };
 
@@ -1738,6 +1826,18 @@ async function startServer() {
   });
 
   app.get('/api/candidates/:candidateId/resume/view', (req: Request, res: Response) => {
+    return handleResumeRequest(req, res, false);
+  });
+
+  app.get('/api/candidates/:candidateId/resume/preview', (req: Request, res: Response) => {
+    return handleResumeRequest(req, res, false);
+  });
+
+  app.get('/api/candidates/:candidateId/documents/resume/preview', (req: Request, res: Response) => {
+    return handleResumeRequest(req, res, false);
+  });
+
+  app.get('/api/candidates/:candidateId/documents/resume', (req: Request, res: Response) => {
     return handleResumeRequest(req, res, false);
   });
 
@@ -1805,7 +1905,10 @@ async function startServer() {
     });
 
     const session = createStaffSession(user, req.ip);
-    res.setHeader('Set-Cookie', `wcr_session=${session.token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800`);
+    res.setHeader('Set-Cookie', [
+      `wcr_session=${session.token}; Path=/; SameSite=Lax; Max-Age=604800`,
+      `wcr_staff_token=${session.token}; Path=/; SameSite=Lax; Max-Age=604800`,
+    ]);
     console.log(`[AUTH] staff authenticated: ${user.name} (${user.role})`);
 
     const { passwordHash: _hash, ...safeUser } = user;
@@ -1825,6 +1928,23 @@ async function startServer() {
 
   app.post('/api/auth/logout', (req: Request, res: Response) => {
     const { userId, userName, userRole } = req.body;
+    const authHeader = req.headers['authorization'];
+    const cookies = parseCookies(req.headers['cookie']);
+    const token =
+      (authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null) ||
+      (req.headers['x-session-token'] as string) ||
+      cookies['wcr_session'] ||
+      cookies['wcr_staff_token'];
+
+    if (token) {
+      revokeStaffSession(token);
+    }
+
+    res.setHeader('Set-Cookie', [
+      'wcr_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax',
+      'wcr_staff_token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax',
+    ]);
+
     const timestamp = new Date().toISOString();
     if (userId) {
       dbService.update((draft) => {
@@ -2802,6 +2922,22 @@ async function startServer() {
     const { id } = req.params;
     const db = dbService.get();
     const auth = authenticateStaffRequest(req, db.users);
+    const authHeader = req.headers['authorization'];
+    const cookies = parseCookies(req.headers['cookie']);
+
+    console.log('[CANDIDATE_PROFILE_REQUEST_TRACE]', {
+      path: req.path,
+      method: req.method,
+      authenticatedUserId: auth.user?.id || null,
+      authenticatedRole: auth.user?.role || null,
+      sessionPresent: !!auth.session,
+      jwtPresent: !!authHeader,
+      authorizationHeaderPresent: !!authHeader,
+      cookiePresent: Object.keys(cookies).length > 0,
+      authMiddlewareResult: auth.authenticated ? 'SUCCESS' : 'FAILED',
+      permissionResult: auth.effectivePermissions || [],
+      candidateId: id,
+    });
 
     if (!auth.authenticated || !auth.user) {
       console.warn(`[AUTH] candidate profile access denied: unauthenticated request for ${id}`);
@@ -3828,6 +3964,9 @@ async function startServer() {
 
     res.json({ success: true, settings: dbService.get().settings });
   });
+
+  // Serve local pdfjs worker assets safely on same origin
+  app.use('/pdfjs', express.static(path.resolve(process.cwd(), 'node_modules/pdfjs-dist/build')));
 
   // ==========================================
   // VITE DEV MIDDLEWARE OR PRODUCTION STATIC

@@ -120,7 +120,8 @@ export type CandidateStatus =
   | 'COMPLETED'
   | 'CHECKED_OUT'
   | 'REJECTED'
-  | 'OFFERED';
+  | 'OFFERED'
+  | 'DELETED';
 
 export type InterviewStage =
   | 'Round 1 - Technical Assessment'

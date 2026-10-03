@@ -23,6 +23,12 @@ import { WalkInModal } from './components/WalkInModal.tsx';
 import { SecureDocumentViewerModal } from './components/SecureDocumentViewerModal.tsx';
 import { ForgotPasswordModal } from './components/ForgotPasswordModal.tsx';
 import { ResetPasswordView } from './components/ResetPasswordView.tsx';
+import {
+  authenticatedFetch,
+  setStoredStaffToken,
+  clearStoredStaffToken,
+  setStoredStaffRole,
+} from './utils/apiClient.ts';
 
 // Role Dashboards
 import { HRDashboard } from './components/dashboards/HRDashboard.tsx';
@@ -94,20 +100,24 @@ export default function App() {
 
   // Initialize Authenticated Staff Session from backend on mount
   useEffect(() => {
-    fetch('/api/auth/me', { credentials: 'include' })
+    authenticatedFetch('/api/auth/me')
       .then((r) => r.json())
       .then((data) => {
         if (data.success && data.authenticated && data.user) {
           setCurrentUser(data.user);
           setCurrentRole(data.user.role);
           setCurrentUserId(data.user.id);
-          if (data.session?.token) setSessionToken(data.session.token);
+          setStoredStaffRole(data.user.role);
+          const tok = data.session?.token || data.token;
+          if (tok) {
+            setSessionToken(tok);
+            setStoredStaffToken(tok);
+          }
         } else {
           // Initialize active HR session
-          fetch('/api/auth/switch-role', {
+          authenticatedFetch('/api/auth/switch-role', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
             body: JSON.stringify({ role: 'HR' }),
           })
             .then((r) => r.json())
@@ -116,7 +126,12 @@ export default function App() {
                 setCurrentUser(sData.user);
                 setCurrentRole(sData.user.role);
                 setCurrentUserId(sData.user.id);
-                if (sData.session?.token) setSessionToken(sData.session.token);
+                setStoredStaffRole(sData.user.role);
+                const tok = sData.session?.token || sData.token;
+                if (tok) {
+                  setSessionToken(tok);
+                  setStoredStaffToken(tok);
+                }
               }
             })
             .catch((err) => console.warn('Session bootstrap error', err));
@@ -163,6 +178,26 @@ export default function App() {
   const queryToken = new URLSearchParams(window.location.search).get('token');
   const dedicatedToken = urlTokenMatch ? urlTokenMatch[1] : (queryToken || 'WCR-APPT-901');
 
+  // Direct staff candidate profile route e.g. /candidate/:candidateId or /candidates/:candidateId
+  const directCandidateMatch = routePath.match(/^\/(?:candidate|candidates)\/([^/?#]+)$/);
+  const directCandidateId =
+    directCandidateMatch && !['check-in', 'register'].includes(directCandidateMatch[1])
+      ? directCandidateMatch[1]
+      : null;
+
+  useEffect(() => {
+    if (directCandidateId) {
+      setSelectedCandidateId(directCandidateId);
+      setActiveModal('DOSSIER');
+    }
+  }, [directCandidateId]);
+
+  useEffect(() => {
+    if (routePath === '/staff/login') {
+      setActiveModal('STAFF_LOGIN');
+    }
+  }, [routePath]);
+
   // Dedicated in-app document viewer route
   // e.g. /app/candidates/:candidateId/resume/view OR /app/candidates/:candidateId/government-id/view
   const docViewerMatch = routePath.match(/\/(?:app\/)?candidates\/([^/?#]+)\/(resume|government-id|govid)\/view/);
@@ -178,11 +213,11 @@ export default function App() {
   const fetchAllData = useCallback(async () => {
     try {
       const [cRes, iRes, rRes, nRes, pRes] = await Promise.all([
-        fetch(`/api/candidates?role=${currentRole}`, { credentials: 'include' }),
-        fetch('/api/interviews', { credentials: 'include' }),
-        fetch('/api/rooms', { credentials: 'include' }),
-        fetch(`/api/notifications?role=${currentRole}&userId=${currentUserId}`, { credentials: 'include' }),
-        fetch('/api/pantry/tasks', { credentials: 'include' }),
+        authenticatedFetch(`/api/candidates?role=${currentRole}`),
+        authenticatedFetch('/api/interviews'),
+        authenticatedFetch('/api/rooms'),
+        authenticatedFetch(`/api/notifications?role=${currentRole}&userId=${currentUserId}`),
+        authenticatedFetch('/api/pantry/tasks'),
       ]);
 
       const [cData, iData, rData, nData, pData] = await Promise.all([
@@ -255,9 +290,7 @@ export default function App() {
         setRouteCandidate(existing);
       } else {
         setRouteCandidateLoading(true);
-        fetch(`/api/candidates/${encodeURIComponent(docCandidateId)}?role=${encodeURIComponent(currentRole)}`, {
-          credentials: 'include',
-        })
+        authenticatedFetch(`/api/candidates/${encodeURIComponent(docCandidateId)}?role=${encodeURIComponent(currentRole)}`)
           .then((r) => {
             if (!r.ok) return { success: false };
             return r.json();
@@ -278,19 +311,21 @@ export default function App() {
   // Handle Role Persona Switching
   const handleSelectRole = async (role: UserRole) => {
     setCurrentRole(role);
+    setStoredStaffRole(role);
     try {
-      const res = await fetch('/api/auth/switch-role', {
+      const res = await authenticatedFetch('/api/auth/switch-role', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ role }),
       });
       const data = await res.json();
       if (data.success) {
         setCurrentUser(data.user);
         setCurrentUserId(data.user.id);
-        if (data.session?.token) {
-          setSessionToken(data.session.token);
+        const tok = data.session?.token || data.token;
+        if (tok) {
+          setSessionToken(tok);
+          setStoredStaffToken(tok);
         }
       }
     } catch (err) {
@@ -305,10 +340,9 @@ export default function App() {
     setLoginSuccess(null);
 
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await authenticatedFetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ email: loginEmail, password: loginPassword }),
       });
       const data = await res.json();
@@ -319,8 +353,11 @@ export default function App() {
       setCurrentUser(data.user);
       setCurrentRole(data.user.role);
       setCurrentUserId(data.user.id);
-      if (data.session?.token) {
-        setSessionToken(data.session.token);
+      setStoredStaffRole(data.user.role);
+      const tok = data.session?.token || data.token;
+      if (tok) {
+        setSessionToken(tok);
+        setStoredStaffToken(tok);
       }
       setLoginSuccess(`Signed in as ${data.user.name} (${data.user.role})`);
       setTimeout(() => {
@@ -329,6 +366,28 @@ export default function App() {
       }, 1000);
     } catch (err: any) {
       setLoginError(err.message || 'Login failed');
+    }
+  };
+
+  // Staff Logout Handler
+  const handleStaffLogout = async () => {
+    try {
+      await authenticatedFetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: currentUserId,
+          userName: currentUser?.name,
+          userRole: currentRole,
+        }),
+      });
+    } catch (err) {
+      console.warn('Logout error', err);
+    } finally {
+      clearStoredStaffToken();
+      setSessionToken('');
+      setCurrentUser(null);
+      setActiveModal('STAFF_LOGIN');
     }
   };
 
@@ -428,17 +487,6 @@ export default function App() {
               console.log('General New Candidate Self-Registration confirmed');
             }}
           />
-          <div className="mt-6 text-center text-xs text-slate-500">
-            <button
-              onClick={() => {
-                window.history.pushState({}, '', '/');
-                setRoutePath('/');
-              }}
-              className="hover:text-amber-400 underline cursor-pointer"
-            >
-              &larr; Switch to Staff & Operations Console
-            </button>
-          </div>
         </div>
         <OfflineIndicator />
       </div>
@@ -477,17 +525,6 @@ export default function App() {
               console.log('Candidate check-in successfully submitted via QR phone route');
             }}
           />
-          <div className="mt-6 text-center text-xs text-slate-500">
-            <button
-              onClick={() => {
-                window.history.pushState({}, '', '/');
-                setRoutePath('/');
-              }}
-              className="hover:text-amber-400 underline cursor-pointer"
-            >
-              &larr; Switch to Staff & Operations Console
-            </button>
-          </div>
         </div>
         <OfflineIndicator />
       </div>
@@ -539,26 +576,11 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
-            <button
-              onClick={() => {
-                window.history.pushState({}, '', '/register');
-                setRoutePath('/register');
-              }}
-              className="w-full sm:w-auto px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl border border-slate-700 transition cursor-pointer flex items-center justify-center gap-2"
-            >
-              <QrCode className="w-4 h-4 text-amber-400" />
-              Start New Check-In
-            </button>
-            <button
-              onClick={() => {
-                window.history.pushState({}, '', '/');
-                setRoutePath('/');
-              }}
-              className="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-black rounded-xl shadow-lg transition cursor-pointer flex items-center justify-center gap-2"
-            >
-              Staff & Operations Login &rarr;
-            </button>
+          <div className="pt-2">
+            <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-xs text-emerald-300 font-semibold text-center flex items-center justify-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>Registration Completed & Locked. Please wait in the reception lounge.</span>
+            </div>
           </div>
         </div>
         <OfflineIndicator />
@@ -702,6 +724,8 @@ export default function App() {
         currentRole={currentRole}
         onSelectRole={handleSelectRole}
         unreadCount={unreadCount}
+        currentUser={currentUser}
+        onLogout={handleStaffLogout}
         onOpenNotifications={() => setNotificationDrawerOpen(true)}
         onOpenQRPasses={() => setActiveModal('QR_PASS')}
         onOpenCheckIn={() => {

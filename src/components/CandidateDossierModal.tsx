@@ -32,6 +32,7 @@ import { formatDateTime } from '../utils/dateFormatter.ts';
 import { ResumeDocumentModal } from './ResumeDocumentModal.tsx';
 import { GovernmentIdModal } from './GovernmentIdModal.tsx';
 import { ReceptionPhotoModal } from './ReceptionPhotoModal.tsx';
+import { authenticatedFetch } from '../utils/apiClient.ts';
 
 interface CandidateDossierModalProps {
   candidateId: string;
@@ -150,11 +151,10 @@ export const CandidateDossierModal: React.FC<CandidateDossierModalProps> = ({
       const timeoutId = setTimeout(() => controller.abort(), 10000);
 
       try {
-        const res = await fetch(
+        const res = await authenticatedFetch(
           `/api/candidates/${encodeURIComponent(candidateId.trim())}?role=${encodeURIComponent(currentRole)}`,
           {
             signal: controller.signal,
-            credentials: 'include',
             headers: {
               'x-user-role': currentRole,
             },
@@ -224,10 +224,9 @@ export const CandidateDossierModal: React.FC<CandidateDossierModalProps> = ({
     setSavingEdit(true);
     setActionError(null);
     try {
-      const res = await fetch(`/api/candidates/${candidateId}?role=${currentRole}`, {
+      const res = await authenticatedFetch(`/api/candidates/${candidateId}?role=${currentRole}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'x-user-role': currentRole },
-        credentials: 'include',
         body: JSON.stringify(editForm),
       });
       const data = await res.json();
@@ -249,10 +248,9 @@ export const CandidateDossierModal: React.FC<CandidateDossierModalProps> = ({
     setDeleting(true);
     setActionError(null);
     try {
-      const res = await fetch(`/api/candidates/${candidateId}?role=${currentRole}`, {
+      const res = await authenticatedFetch(`/api/candidates/${candidateId}?role=${currentRole}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json', 'x-user-role': currentRole },
-        credentials: 'include',
         body: JSON.stringify({ reason: deleteReason }),
       });
       const data = await res.json();
@@ -354,6 +352,18 @@ export const CandidateDossierModal: React.FC<CandidateDossierModalProps> = ({
   const valResult = candidate.validationResult;
   const isGovIdVerified = govId?.verificationStatus === 'VERIFIED';
   const isGovIdNeedsReview = govId?.verificationStatus === 'NEEDS_REVIEW';
+  const hasResume = Boolean(
+    candidate.resumeUrl ||
+    candidate.resumeFileName ||
+    candidate.resumeMetadata
+  );
+  const hasGovId = Boolean(
+    govId?.storageKey ||
+    govId?.documentDataUrl ||
+    govId?.maskedIdNumber ||
+    govId?.idType ||
+    govId?.originalFileName
+  );
 
   const canViewConfidential = currentRole === 'HR' || currentRole === 'ADMIN' || currentRole === 'CEO';
   const canCapturePhoto = currentRole === 'RECEPTION' || currentRole === 'HR' || currentRole === 'ADMIN';
@@ -563,103 +573,157 @@ export const CandidateDossierModal: React.FC<CandidateDossierModalProps> = ({
                 </div>
               </div>
 
-              {/* SECTION: DOCUMENTS (RESUME & GOVERNMENT ID) */}
-              <div className="space-y-3">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <FileText className="w-3.5 h-3.5 text-amber-400" />
-                  Candidate Documents
-                </h3>
+              {/* SECTION: DOCUMENTS (RESUME & GOVERNMENT ID) - STRICTLY RESTRICTED FROM PANTRY */}
+              {currentRole !== 'PANTRY' && (
+                <div className="space-y-3">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-amber-400" />
+                    Candidate Documents
+                  </h3>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {/* RESUME CARD */}
-                  <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
-                          <FileText className="w-4 h-4" />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {/* RESUME CARD */}
+                    <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                            <FileText className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-bold text-white">Resume</h4>
+                            <span className="text-[10px] text-slate-400 block">
+                              {hasResume ? (candidate.resumeFileSize || '1.4 MB') : 'Not available'}
+                            </span>
+                          </div>
                         </div>
-                        <div>
-                          <h4 className="text-xs font-bold text-white">Resume Document</h4>
-                          <span className="text-[10px] text-slate-400 block">{candidate.resumeFileSize || '1.4 MB'}</span>
-                        </div>
-                      </div>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                        Uploaded
-                      </span>
-                    </div>
-
-                    <p className="text-[11px] text-slate-300 truncate">{candidate.resumeFileName || 'Candidate_Resume.pdf'}</p>
-
-                    <div className="flex items-center gap-2 pt-1 border-t border-slate-800/80">
-                      <button
-                        onClick={() => {
-                          setShowResumeModal(true);
-                          window.history.pushState({}, '', `/app/candidates/${candidate.id}/resume/view`);
-                        }}
-                        className="flex-1 py-1.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-300 font-bold text-xs border border-slate-700 transition cursor-pointer flex items-center justify-center gap-1"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>View</span>
-                      </button>
-                      <button
-                        onClick={handleDownloadResume}
-                        className="flex-1 py-1.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition cursor-pointer flex items-center justify-center gap-1"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        <span>Download</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* GOVERNMENT ID CARD */}
-                  <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0">
-                          <ShieldCheck className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <h4 className="text-xs font-bold text-white">{govId?.idTypeName || 'Government ID'}</h4>
-                          <span className="text-[10px] text-slate-400 block">
-                            Masked: <span className="font-mono text-cyan-300">{govId?.maskedIdNumber || 'XXXX XXXX 1234'}</span>
+                        {hasResume ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3" /> Uploaded
                           </span>
-                        </div>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-800 text-slate-400 border border-slate-700">
+                            Not uploaded
+                          </span>
+                        )}
                       </div>
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1 ${
-                          isGovIdVerified
-                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                            : 'bg-amber-500/10 text-amber-300 border-amber-500/30'
-                        }`}
-                      >
-                        {govId?.verificationStatus || 'VERIFIED'}
-                      </span>
+
+                      <p className="text-[11px] text-slate-300 truncate">
+                        {hasResume
+                          ? (candidate.resumeFileName || `${candidate.fullName.replace(/\s+/g, '_')}_Resume.pdf`)
+                          : 'No resume uploaded by candidate'}
+                      </p>
+
+                      <div className="pt-1 border-t border-slate-800/80">
+                        {hasResume ? (
+                          <div className="flex items-center gap-2">
+                            {/* PRIMARY ACTION: PREVIEW */}
+                            <button
+                              type="button"
+                              onClick={() => setShowResumeModal(true)}
+                              className="flex-1 py-2 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition cursor-pointer flex items-center justify-center gap-1.5"
+                              title="Preview resume directly inside WCR (no download required)"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>Preview Resume</span>
+                            </button>
+
+                            {/* SECONDARY ACTION: AUTHORIZED DOWNLOAD */}
+                            <button
+                              type="button"
+                              onClick={handleDownloadResume}
+                              className="py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white font-medium text-xs border border-slate-700 transition cursor-pointer flex items-center justify-center gap-1"
+                              title="Download original file"
+                            >
+                              <Download className="w-3.5 h-3.5 text-slate-400" />
+                              <span>Download</span>
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="py-2 px-3 rounded-xl bg-slate-900/60 border border-slate-800 text-slate-500 text-xs font-medium text-center">
+                            Resume not uploaded
+                          </div>
+                        )}
+                      </div>
                     </div>
 
-                    <p className="text-[11px] text-slate-300 truncate">{govId?.originalFileName || `${candidate.fullName}_ID.pdf`}</p>
+                    {/* GOVERNMENT ID CARD */}
+                    <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0">
+                            <ShieldCheck className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-bold text-white">{govId?.idTypeName || 'Government ID'}</h4>
+                            <span className="text-[10px] text-slate-400 block">
+                              {hasGovId ? (
+                                <>
+                                  Masked: <span className="font-mono text-cyan-300">{govId?.maskedIdNumber || 'XXXX XXXX 1234'}</span>
+                                </>
+                              ) : (
+                                'Not provided'
+                              )}
+                            </span>
+                          </div>
+                        </div>
+                        {hasGovId ? (
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1 ${
+                              isGovIdVerified
+                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                                : 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30'
+                            }`}
+                          >
+                            <CheckCircle2 className="w-3 h-3" /> {govId?.verificationStatus || 'Uploaded'}
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-800 text-slate-400 border border-slate-700">
+                            Not uploaded
+                          </span>
+                        )}
+                      </div>
 
-                    <div className="flex items-center gap-2 pt-1 border-t border-slate-800/80">
-                      <button
-                        onClick={() => {
-                          setShowGovIdModal(true);
-                          window.history.pushState({}, '', `/app/candidates/${candidate.id}/government-id/view`);
-                        }}
-                        className="flex-1 py-1.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-cyan-300 font-bold text-xs border border-slate-700 transition cursor-pointer flex items-center justify-center gap-1"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>View ID</span>
-                      </button>
-                      <button
-                        onClick={handleDownloadGovId}
-                        className="flex-1 py-1.5 px-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs shadow-md transition cursor-pointer flex items-center justify-center gap-1"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        <span>Download</span>
-                      </button>
+                      <p className="text-[11px] text-slate-300 truncate">
+                        {hasGovId
+                          ? (govId?.originalFileName || `${candidate.fullName.replace(/\s+/g, '_')}_ID.pdf`)
+                          : 'No Government ID uploaded by candidate'}
+                      </p>
+
+                      <div className="pt-1 border-t border-slate-800/80">
+                        {hasGovId ? (
+                          <div className="flex items-center gap-2">
+                            {/* PRIMARY ACTION: PREVIEW */}
+                            <button
+                              type="button"
+                              onClick={() => setShowGovIdModal(true)}
+                              className="flex-1 py-2 px-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs shadow-md transition cursor-pointer flex items-center justify-center gap-1.5"
+                              title="Preview Government ID directly inside WCR (no download required)"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>Preview ID</span>
+                            </button>
+
+                            {/* SECONDARY ACTION: AUTHORIZED DOWNLOAD */}
+                            <button
+                              type="button"
+                              onClick={handleDownloadGovId}
+                              className="py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white font-medium text-xs border border-slate-700 transition cursor-pointer flex items-center justify-center gap-1"
+                              title="Download original file"
+                            >
+                              <Download className="w-3.5 h-3.5 text-slate-400" />
+                              <span>Download</span>
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="py-2 px-3 rounded-xl bg-slate-900/60 border border-slate-800 text-slate-500 text-xs font-medium text-center">
+                            Government ID not uploaded
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               {/* OPERATIONAL INFORMATION */}
               <div className="space-y-3">
@@ -1119,12 +1183,7 @@ export const CandidateDossierModal: React.FC<CandidateDossierModalProps> = ({
         <ResumeDocumentModal
           candidate={candidate}
           currentRole={currentRole}
-          onClose={() => {
-            setShowResumeModal(false);
-            if (window.location.pathname.includes('/view')) {
-              window.history.pushState({}, '', '/');
-            }
-          }}
+          onClose={() => setShowResumeModal(false)}
         />
       )}
 
@@ -1133,12 +1192,7 @@ export const CandidateDossierModal: React.FC<CandidateDossierModalProps> = ({
         <GovernmentIdModal
           candidate={candidate}
           currentRole={currentRole}
-          onClose={() => {
-            setShowGovIdModal(false);
-            if (window.location.pathname.includes('/view')) {
-              window.history.pushState({}, '', '/');
-            }
-          }}
+          onClose={() => setShowGovIdModal(false)}
         />
       )}
 

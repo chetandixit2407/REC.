@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import type { Candidate } from '../types/index.ts';
 import { CameraCapture } from './CameraCapture.tsx';
+import { authenticatedFetch } from '../utils/apiClient.ts';
 
 interface ReceptionPhotoModalProps {
   candidate: Candidate;
@@ -35,7 +36,7 @@ export const ReceptionPhotoModal: React.FC<ReceptionPhotoModalProps> = ({
     setUploadError(null);
 
     try {
-      const res = await fetch(`/api/candidates/${candidate.id}/reception-photo`, {
+      const res = await authenticatedFetch(`/api/candidates/${candidate.id}/reception-photo`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

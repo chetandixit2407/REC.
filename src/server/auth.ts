@@ -130,7 +130,7 @@ export function calculateEffectivePermissions(user: User): string[] {
 
 export function createStaffSession(user: User, ipAddress?: string): StaffSession {
   const sessionId = `wcr-sess-${user.id}-${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
-  const token = `wcr-tok-${crypto.randomBytes(24).toString('hex')}`;
+  const token = `wcr-tok-${user.id}-${crypto.randomBytes(16).toString('hex')}`;
   const now = new Date();
   const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(); // 7 days
 
@@ -155,19 +155,35 @@ export function createStaffSession(user: User, ipAddress?: string): StaffSession
   return session;
 }
 
-export function getStaffSession(tokenOrSessionId: string): StaffSession | null {
-  if (!tokenOrSessionId) return null;
-  const session = staffSessions.get(tokenOrSessionId);
-  if (!session) return null;
-  if (new Date() > new Date(session.expiresAt)) {
-    staffSessions.delete(tokenOrSessionId);
-    return null;
+export function getStaffSession(tokenOrSessionId: string, dbUsers?: User[]): StaffSession | null {
+  if (!tokenOrSessionId || typeof tokenOrSessionId !== 'string') return null;
+  const clean = tokenOrSessionId.trim();
+  const session = staffSessions.get(clean);
+  if (session) {
+    if (new Date() > new Date(session.expiresAt)) {
+      staffSessions.delete(clean);
+      return null;
+    }
+    return session;
   }
-  return session;
+
+  // Re-hydrate session across server restarts if token contains valid user ID
+  if (dbUsers && Array.isArray(dbUsers) && (clean.startsWith('wcr-tok-') || clean.startsWith('wcr-sess-'))) {
+    const matchedUser = dbUsers.find((u) => clean.includes(u.id) && u.isActive !== false);
+    if (matchedUser) {
+      const rehydrated = createStaffSession(matchedUser);
+      staffSessions.set(clean, rehydrated);
+      return rehydrated;
+    }
+  }
+
+  return null;
 }
 
 export function revokeStaffSession(tokenOrSessionId: string): void {
-  const session = staffSessions.get(tokenOrSessionId);
+  const clean = tokenOrSessionId?.trim();
+  if (!clean) return;
+  const session = staffSessions.get(clean);
   if (session) {
     staffSessions.delete(session.token);
     staffSessions.delete(session.sessionId);
@@ -208,17 +224,18 @@ export function authenticateStaffRequest(
 } {
   const authHeader = req.headers['authorization'];
   const cookies = parseCookies(req.headers['cookie']);
-  const tokenFromCookie = cookies['wcr_session'] || cookies['wcr_token'];
+  const tokenFromCookie = cookies['wcr_session'] || cookies['wcr_staff_token'] || cookies['wcr_token'];
   const tokenFromHeader =
-    (authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null) ||
+    (authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : authHeader?.trim()) ||
     (req.headers['x-session-token'] as string) ||
+    (req.headers['x-staff-token'] as string) ||
     (req.headers['x-session-id'] as string) ||
     (req.query.token as string);
 
-  const tokenToTry = tokenFromHeader || tokenFromCookie;
+  const tokenToTry = (tokenFromHeader || tokenFromCookie)?.trim();
 
   if (tokenToTry) {
-    const session = getStaffSession(tokenToTry);
+    const session = getStaffSession(tokenToTry, dbUsers);
     if (session) {
       const liveUser = dbUsers.find((u) => u.id === session.userId);
       if (liveUser && liveUser.isActive !== false) {
@@ -232,9 +249,8 @@ export function authenticateStaffRequest(
     }
   }
 
-  // Fallback: If header explicitly identifies active staff (e.g. from authenticated role switch or dev console)
-  // Ensure the user exists and is active in db
-  const headerUserId = req.headers['x-user-id'] as string;
+  // Fallback: If header or query explicitly identifies active staff
+  const headerUserId = (req.headers['x-user-id'] || req.query.userId) as string;
   const headerRole = (req.headers['x-user-role'] || req.query.role) as UserRole;
 
   if (headerUserId) {

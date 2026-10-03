@@ -47,19 +47,10 @@ export const CandidateCheckInForm: React.FC<CandidateCheckInFormProps> = ({
   const [formData, setFormData] = useState({
     fullName: '',
     phone: '',
-    email: '',
-    address: '',
-    city: 'Gurugram',
-    state: 'Haryana',
-    pincode: '122002',
     position: 'Sales Manager - Luxury Residential',
-    department: 'Sales & Business Development',
     totalExperience: '5.5 Years',
     relevantExperience: '4 Years in Luxury Real Estate',
     currentCompany: 'DLF Crest Sales',
-    qualification: 'MBA Marketing',
-    noticePeriod: '15 Days',
-    expectedSalary: '₹16,00,000 p.a.',
     interviewType: 'Round 1 - Technical Assessment',
     visitPurpose: 'Scheduled In-Person Interview',
     referralSource: 'LinkedIn / Portal',
@@ -173,7 +164,6 @@ export const CandidateCheckInForm: React.FC<CandidateCheckInFormProps> = ({
             ...prev,
             fullName: data.session.candidateName || prev.fullName,
             position: data.session.position || prev.position,
-            department: data.session.department || prev.department,
             interviewType: data.session.interviewRound || prev.interviewType,
           }));
         }
@@ -224,6 +214,17 @@ export const CandidateCheckInForm: React.FC<CandidateCheckInFormProps> = ({
     };
   }, [submittedCandidate?.id]);
 
+  // 2-second auto-exit redirect after successful check-in
+  useEffect(() => {
+    if (submittedCandidate) {
+      const timer = setTimeout(() => {
+        window.history.pushState({}, '', '/registration-complete');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [submittedCandidate]);
+
   const handlePhotoUploadFallback = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -255,13 +256,13 @@ export const CandidateCheckInForm: React.FC<CandidateCheckInFormProps> = ({
   // Validation per step
   const validateStep = (currentStep: number): boolean => {
     if (currentStep === 1) {
-      if (!formData.fullName.trim() || !formData.phone.trim() || !formData.email.trim()) {
-        setSubmitError('Please complete mandatory personal fields: Full Name, Mobile Number, and Email.');
+      if (!formData.fullName.trim() || !formData.phone.trim()) {
+        setSubmitError('Please complete mandatory personal fields: Full Name and Mobile Number.');
         return false;
       }
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(formData.email)) {
-        setSubmitError('Please provide a valid email address.');
+      const cleanPhone = formData.phone.trim().replace(/[\s-]/g, '');
+      if (cleanPhone.length < 10) {
+        setSubmitError('Please provide a valid 10-digit mobile number.');
         return false;
       }
     }
@@ -364,9 +365,6 @@ export const CandidateCheckInForm: React.FC<CandidateCheckInFormProps> = ({
             <p className="text-sm text-slate-300 font-medium mt-1">
               Your registration has been submitted successfully.
             </p>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold rounded-full mt-2">
-              <span>Automatic exit in approximately 2 seconds...</span>
-            </div>
           </div>
 
           {/* Real-time Status Alert Banner */}
@@ -424,17 +422,26 @@ export const CandidateCheckInForm: React.FC<CandidateCheckInFormProps> = ({
             </div>
           </div>
 
-          <div className="pt-4 flex justify-center gap-3">
-            <button
-              onClick={() => {
-                setSubmittedCandidate(null);
-                setStep(1);
-                if (onCancel) onCancel();
-              }}
-              className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition"
-            >
-              {isStandalonePage ? 'New Registration' : 'Close Check-In'}
-            </button>
+          <div className="pt-3">
+            {isStandalonePage ? (
+              <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-xs text-emerald-300 font-semibold text-center flex items-center justify-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>Check-in Completed. Please wait in the reception lounge.</span>
+              </div>
+            ) : (
+              <div className="flex justify-center">
+                <button
+                  onClick={() => {
+                    setSubmittedCandidate(null);
+                    setStep(1);
+                    if (onCancel) onCancel();
+                  }}
+                  className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition"
+                >
+                  Close Check-In
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -525,60 +532,6 @@ export const CandidateCheckInForm: React.FC<CandidateCheckInFormProps> = ({
               />
             </div>
           </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">
-              Email Address <span className="text-amber-400">*</span>
-            </label>
-            <input
-              type="email"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              placeholder="rahul.sharma@example.com"
-              className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-hidden focus:border-amber-400 transition"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Address</label>
-            <input
-              type="text"
-              value={formData.address}
-              onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-              placeholder="Apartment, Street name, Sector"
-              className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-hidden focus:border-amber-400 transition"
-            />
-          </div>
-
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">City</label>
-              <input
-                type="text"
-                value={formData.city}
-                onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-hidden focus:border-amber-400"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">State</label>
-              <input
-                type="text"
-                value={formData.state}
-                onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-hidden focus:border-amber-400"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Pincode</label>
-              <input
-                type="text"
-                value={formData.pincode}
-                onChange={(e) => setFormData({ ...formData, pincode: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-hidden focus:border-amber-400"
-              />
-            </div>
-          </div>
         </div>
       )}
 
@@ -599,18 +552,14 @@ export const CandidateCheckInForm: React.FC<CandidateCheckInFormProps> = ({
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Department</label>
-              <select
-                value={formData.department}
-                onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+              <label className="block text-xs font-semibold text-slate-300 mb-1">Current/Previous Company</label>
+              <input
+                type="text"
+                value={formData.currentCompany}
+                onChange={(e) => setFormData({ ...formData, currentCompany: e.target.value })}
+                placeholder="e.g. DLF / JLL / CBRE"
                 className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-hidden focus:border-amber-400"
-              >
-                <option value="Sales & Business Development">Sales & Business Development</option>
-                <option value="Commercial Real Estate">Commercial Real Estate</option>
-                <option value="Luxury Residential Leasing">Luxury Residential Leasing</option>
-                <option value="Operations & Legal">Operations & Legal</option>
-                <option value="Marketing & Brand">Marketing & Brand</option>
-              </select>
+              />
             </div>
           </div>
 
@@ -632,52 +581,6 @@ export const CandidateCheckInForm: React.FC<CandidateCheckInFormProps> = ({
                 value={formData.relevantExperience}
                 onChange={(e) => setFormData({ ...formData, relevantExperience: e.target.value })}
                 placeholder="e.g. 4 Years Luxury Residential"
-                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-hidden focus:border-amber-400"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Current/Previous Company</label>
-              <input
-                type="text"
-                value={formData.currentCompany}
-                onChange={(e) => setFormData({ ...formData, currentCompany: e.target.value })}
-                placeholder="e.g. DLF / JLL / CBRE"
-                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-hidden focus:border-amber-400"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Highest Qualification</label>
-              <input
-                type="text"
-                value={formData.qualification}
-                onChange={(e) => setFormData({ ...formData, qualification: e.target.value })}
-                placeholder="e.g. MBA / B.Tech / Graduate"
-                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-hidden focus:border-amber-400"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Notice Period</label>
-              <input
-                type="text"
-                value={formData.noticePeriod}
-                onChange={(e) => setFormData({ ...formData, noticePeriod: e.target.value })}
-                placeholder="e.g. 15 Days / Immediate"
-                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-hidden focus:border-amber-400"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Expected Salary (CTC)</label>
-              <input
-                type="text"
-                value={formData.expectedSalary}
-                onChange={(e) => setFormData({ ...formData, expectedSalary: e.target.value })}
-                placeholder="e.g. ₹16,00,000 p.a."
                 className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-hidden focus:border-amber-400"
               />
             </div>
@@ -942,7 +845,7 @@ export const CandidateCheckInForm: React.FC<CandidateCheckInFormProps> = ({
               <div>
                 <h4 className="text-sm font-bold text-white">{formData.fullName}</h4>
                 <p className="text-amber-400 font-medium">{formData.position}</p>
-                <p className="text-[11px] text-slate-400">{formData.phone} • {formData.email}</p>
+                <p className="text-[11px] text-slate-400">{formData.phone}</p>
               </div>
             </div>
 
@@ -952,12 +855,12 @@ export const CandidateCheckInForm: React.FC<CandidateCheckInFormProps> = ({
                 <span className="text-slate-200 font-medium">{formData.totalExperience}</span>
               </div>
               <div>
-                <span className="text-slate-400">Notice Period:</span>{' '}
-                <span className="text-slate-200 font-medium">{formData.noticePeriod}</span>
+                <span className="text-slate-400">Company:</span>{' '}
+                <span className="text-slate-200 font-medium">{formData.currentCompany || 'N/A'}</span>
               </div>
               <div>
-                <span className="text-slate-400">Expected Salary:</span>{' '}
-                <span className="text-slate-200 font-medium">{formData.expectedSalary}</span>
+                <span className="text-slate-400">Relevant Experience:</span>{' '}
+                <span className="text-slate-200 font-medium">{formData.relevantExperience}</span>
               </div>
               <div>
                 <span className="text-slate-400">Resume Attached:</span>{' '}

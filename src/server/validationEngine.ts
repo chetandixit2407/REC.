@@ -182,19 +182,31 @@ export class ValidationEngine {
       actual: candidate.phone || 'Empty',
     });
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const emailValid = !!(candidate.email && emailRegex.test(candidate.email.trim()));
-    checks.push({
-      id: 'chk-email',
-      name: 'Email Address Format',
-      category: 'PERSONAL',
-      status: emailValid ? 'PASSED' : 'INVALID',
-      details: emailValid
-        ? `Standard corporate/personal email format confirmed (${candidate.email}).`
-        : 'Malformed email address syntax.',
-      expected: 'name@domain.com',
-      actual: candidate.email || 'Empty',
-    });
+    if (candidate.email && candidate.email.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const emailValid = emailRegex.test(candidate.email.trim());
+      checks.push({
+        id: 'chk-email',
+        name: 'Email Address Format',
+        category: 'PERSONAL',
+        status: emailValid ? 'PASSED' : 'INVALID',
+        details: emailValid
+          ? `Standard corporate/personal email format confirmed (${candidate.email}).`
+          : 'Malformed email address syntax.',
+        expected: 'name@domain.com',
+        actual: candidate.email || 'Empty',
+      });
+    } else {
+      checks.push({
+        id: 'chk-email',
+        name: 'Email Address Format',
+        category: 'PERSONAL',
+        status: 'PASSED',
+        details: 'Email is optional in public candidate registration.',
+        expected: 'Optional',
+        actual: 'Omitted',
+      });
+    }
 
     // 2. Professional Information Validation
     const posValid = !!(candidate.position && candidate.position.trim().length >= 2);
